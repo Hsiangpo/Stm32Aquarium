@@ -1,0 +1,9 @@
+{
+  "name": "aquarium_at",
+  "version": "1.0.0",
+  "description": "ESP32 AT command engine with line parsing and URC queue",
+  "keywords": ["at", "esp32", "uart", "modem"],
+  "license": "MIT",
+  "platforms": ["*"],
+  "frameworks": ["*"]
+}

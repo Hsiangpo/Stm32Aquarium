@@ -1,0 +1,66 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #0F172A;
+  color: #FFFFFF;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 16pt 30pt;
+  display: flex;
+  flex-direction: column;
+  gap: 12pt;
+}
+.row { display: flex; gap: 14pt; }
+.card {
+  flex: 1;
+  background: #111827;
+  border: 1pt solid #1D4ED8;
+  border-radius: 10pt;
+  padding: 14pt 16pt;
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 16pt; color: #BFDBFE; }
+ul { margin: 0; padding-left: 16pt; font-size: 13.5pt; line-height: 1.5; color: #E2E8F0; }
+li { margin-bottom: 6pt; }
+.thanks { margin-top: 6pt; font-size: 30pt; color: #93C5FD; text-align: right; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>总结与展望</h1></div>
+  <div class="content">
+    <div class="row">
+      <div class="card">
+        <h2>项目总结</h2>
+        <ul>
+          <li>完成设备端、云端、应用端协同闭环</li>
+          <li>实现多传感器监测 + 自动控制 + 告警策略</li>
+          <li>提供完整文档与验收流程</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>后续展望</h2>
+        <ul>
+          <li>增加更多水质指标与智能算法</li>
+          <li>升级 TLS 安全通信（MQTTS 8883）</li>
+          <li>引入数据预测与智能投喂策略</li>
+        </ul>
+      </div>
+    </div>
+    <p class="thanks">谢谢！</p>
+  </div>
+</body>
+</html>

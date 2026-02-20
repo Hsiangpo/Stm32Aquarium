@@ -1,0 +1,69 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #F8FAFC;
+  color: #1E293B;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  background: #0F172A;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 16pt 30pt;
+  display: flex;
+  flex-direction: column;
+}
+.row { display: flex; gap: 14pt; }
+.card {
+  flex: 1;
+  background: #FFFFFF;
+  border: 1pt solid #E2E8F0;
+  border-radius: 10pt;
+  padding: 14pt 16pt;
+  box-shadow: 2px 2px 10px rgba(15, 23, 42, 0.08);
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 16pt; color: #0F172A; }
+ul { margin: 0; padding-left: 16pt; font-size: 13.5pt; line-height: 1.5; }
+li { margin-bottom: 6pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #475569; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>风险评估与应对</h1></div>
+  <div class="content">
+    <div class="row">
+      <div class="card">
+        <h2>潜在风险</h2>
+        <ul>
+          <li>传感器精度偏差，影响控制逻辑</li>
+          <li>Wi-Fi 不稳定导致上报中断</li>
+          <li>设备离线时命令下发失败</li>
+          <li>多端同时登录导致 MQTT 冲突</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>应对策略</h2>
+        <ul>
+          <li>引入校准系数与异常值容错</li>
+          <li>指数退避重连 + AP 配网兜底</li>
+          <li>同步/异步命令策略并提示结果</li>
+          <li>App 实时订阅可选开启，默认 REST 刷新</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">针对可预见风险提前设计恢复策略，保证演示与实际可用性。</p>
+  </div>
+</body>
+</html>

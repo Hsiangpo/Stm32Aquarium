@@ -1,0 +1,58 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 18pt 30pt 18pt 30pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 16pt 20pt;
+}
+ul { margin: 0; padding-left: 18pt; font-size: 16pt; line-height: 1.5; }
+li { margin-bottom: 8pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #3C4A5D; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>测试与验收</h1></div>
+  <div class="content">
+    <div class="card">
+      <ul>
+        <li>设备连续运行 12 小时，无异常复位</li>
+        <li>IoTDA 控制台可见全部 13 属性字段</li>
+        <li>App 影子刷新 1 秒内更新，命令回包成功</li>
+        <li>阈值/配置修改 30 秒内生效并重连</li>
+        <li>AP 配网流程 ≤ 5 分钟完成</li>
+        <li>端到端闭环演示：上报 → 控制 → 执行 → 回包</li>
+      </ul>
+    </div>
+    <p class="note">完整验收与截图点位见 docs/Acceptance_Checklist.md。</p>
+  </div>
+</body>
+</html>

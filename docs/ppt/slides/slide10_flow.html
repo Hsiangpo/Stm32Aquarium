@@ -1,0 +1,57 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 18pt 30pt 18pt 30pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 16pt 20pt;
+}
+ol { margin: 0; padding-left: 20pt; font-size: 16pt; line-height: 1.5; }
+li { margin-bottom: 8pt; }
+.highlight { margin-top: 10pt; font-size: 14pt; color: #E76F51; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>端到端闭环流程（演示）</h1></div>
+  <div class="content">
+    <div class="card">
+      <ol>
+        <li>设备 30s 采集并上报属性（MQTT properties/report）</li>
+        <li>IoTDA 更新设备影子并广播最新状态</li>
+        <li>App 刷新影子/实时订阅，展示仪表盘</li>
+        <li>用户在 App 下发控制或阈值命令</li>
+        <li>设备执行并回传结果，状态再次刷新</li>
+      </ol>
+    </div>
+    <p class="highlight">演示要点：上报 → 云端展示 → 远程控制 → 设备执行 → 回包确认。</p>
+  </div>
+</body>
+</html>

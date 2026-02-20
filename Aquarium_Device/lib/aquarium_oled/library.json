@@ -1,0 +1,11 @@
+{
+  "name": "aquarium_oled",
+  "version": "1.0.0",
+  "description": "SSD1306 OLED driver with I2C abstraction",
+  "keywords": ["aquarium", "oled", "ssd1306", "i2c"],
+  "authors": [
+    {
+      "name": "Aquarium Project"
+    }
+  ]
+}

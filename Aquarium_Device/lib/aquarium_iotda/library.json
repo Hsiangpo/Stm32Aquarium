@@ -1,0 +1,13 @@
+{
+  "name": "aquarium_iotda",
+  "version": "1.0.0",
+  "description": "Huawei IoTDA adapter layer (protocol + logic glue)",
+  "keywords": ["iot", "mqtt", "huaweicloud", "iotda", "aquarium"],
+  "license": "MIT",
+  "platforms": ["*"],
+  "frameworks": ["*"],
+  "dependencies": {
+    "aquarium_core": "*",
+    "aquarium_logic": "*"
+  }
+}

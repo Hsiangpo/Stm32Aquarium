@@ -1,0 +1,9 @@
+{
+  "name": "aquarium_core",
+  "version": "1.0.0",
+  "description": "Smart aquarium protocol core (types + JSON encode/decode)",
+  "keywords": ["iot", "mqtt", "huaweicloud", "aquarium"],
+  "license": "MIT",
+  "platforms": ["*"],
+  "frameworks": ["*"]
+}

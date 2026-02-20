@@ -1,0 +1,67 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #F8FAFC;
+  color: #1E293B;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  background: #0F172A;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 16pt 30pt;
+  display: flex;
+  flex-direction: column;
+}
+.row { display: flex; gap: 14pt; }
+.card {
+  flex: 1;
+  background: #FFFFFF;
+  border: 1pt solid #E2E8F0;
+  border-radius: 10pt;
+  padding: 14pt 16pt;
+  box-shadow: 2px 2px 10px rgba(15, 23, 42, 0.08);
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 16pt; color: #0F172A; }
+ul { margin: 0; padding-left: 16pt; font-size: 13.5pt; line-height: 1.5; }
+li { margin-bottom: 6pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #475569; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>安全设计与数据保护</h1></div>
+  <div class="content">
+    <div class="row">
+      <div class="card">
+        <h2>身份认证</h2>
+        <ul>
+          <li>REST 使用 AK/SK 签名（SDK-HMAC-SHA256）</li>
+          <li>MQTT 设备端使用 timestamp 签名</li>
+          <li>App MQTT 采用 sign_type=0 避免互踢</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>密钥与隐私</h2>
+        <ul>
+          <li>AK/SK 默认不落盘，需显式开启保存</li>
+          <li>Device Secret 同样默认不落盘</li>
+          <li>导出实验记录自动脱敏 Wi-Fi 密码</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">遵循最小暴露原则，确保演示截图与日志不泄露敏感信息。</p>
+  </div>
+</body>
+</html>

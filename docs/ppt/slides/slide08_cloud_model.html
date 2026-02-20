@@ -1,0 +1,70 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 16pt 30pt 16pt 30pt;
+  display: flex;
+  flex-direction: column;
+}
+.row { display: flex; gap: 16pt; }
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 12pt 16pt;
+  flex: 1;
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 17pt; color: #0B1F3A; }
+ul { margin: 0; padding-left: 16pt; font-size: 14pt; line-height: 1.4; }
+li { margin-bottom: 4pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #3C4A5D; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>云端平台与物模型</h1></div>
+  <div class="content">
+    <div class="row">
+      <div class="card">
+        <h2>IoTDA 配置</h2>
+        <ul>
+          <li>区域：cn-north-4（华北-北京四）</li>
+          <li>产品/设备注册与密钥管理</li>
+          <li>MQTT/REST 接入地址</li>
+          <li>设备影子与在线状态</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>数据模型与命令</h2>
+        <ul>
+          <li>Aquarium 服务：13 个核心属性</li>
+          <li>命令：control / set_thresholds / set_config</li>
+          <li>Topic：properties/report、commands/request、response</li>
+          <li>AK/SK 签名保障 REST 安全</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">属性字段覆盖温度/pH/TDS/浊度/水位与执行器状态，确保设备与应用一致。</p>
+  </div>
+</body>
+</html>

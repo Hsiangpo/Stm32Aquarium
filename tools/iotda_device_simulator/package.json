@@ -1,0 +1,9 @@
+{
+  "name": "iotda-device-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "mqtt": "^5.10.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "aquarium_storage",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Flash storage layer for aquarium device configuration persistence",
+  "keywords": ["storage", "flash", "config", "persistence"],
+  "dependencies": {
+    "aquarium_logic": "*"
+  }
+}

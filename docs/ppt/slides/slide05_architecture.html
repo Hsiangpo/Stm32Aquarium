@@ -1,0 +1,88 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #F8FAFC;
+  color: #1E293B;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  background: #0F172A;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 14pt 26pt 18pt 26pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.flow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10pt;
+}
+.box {
+  width: 190pt;
+  background: #FFFFFF;
+  border: 1pt solid #E2E8F0;
+  border-radius: 10pt;
+  padding: 12pt 14pt;
+  box-shadow: 2px 2px 10px rgba(15, 23, 42, 0.08);
+}
+.box h2 { margin: 0 0 6pt 0; font-size: 15pt; color: #0F172A; }
+.box ul { margin: 0; padding-left: 15pt; font-size: 12.5pt; line-height: 1.45; }
+.box li { margin-bottom: 4pt; }
+.arrow { width: 40pt; text-align: center; }
+.arrow p { margin: 0; font-size: 12pt; color: #475569; }
+.note { margin-top: 12pt; font-size: 12.5pt; color: #475569; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>系统总体架构</h1></div>
+  <div class="content">
+    <div class="flow">
+      <div class="box">
+        <h2>设备端（感知/执行）</h2>
+        <ul>
+          <li>STM32 采集 5 类传感器</li>
+          <li>继电器控制泵/加热</li>
+          <li>舵机投饵 + 本地告警</li>
+          <li>OLED 状态轮播</li>
+        </ul>
+      </div>
+      <div class="arrow"><p>MQTT<br>上报</p></div>
+      <div class="box">
+        <h2>华为云 IoTDA</h2>
+        <ul>
+          <li>设备注册与鉴权</li>
+          <li>影子/属性存储</li>
+          <li>命令转发与日志</li>
+          <li>在线状态管理</li>
+        </ul>
+      </div>
+      <div class="arrow"><p>REST<br>MQTT</p></div>
+      <div class="box">
+        <h2>应用端（展示/控制）</h2>
+        <ul>
+          <li>仪表盘/趋势图</li>
+          <li>阈值与配置下发</li>
+          <li>告警通知/卡片</li>
+          <li>分布式同步</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">三层架构解耦：设备负责实时感知与执行，云端负责转发与可信存储，应用负责可视化与运维决策。</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+# ===== PlatformIO (STM32 Device) =====
+**/.pio/
+**/.piolibdeps/
+**/.pioenvs/
+
+# ===== HarmonyOS / DevEco Studio =====
+**/node_modules/
+**/oh_modules/
+**/local.properties
+**/.idea/
+**/build/
+**/.hvigor/
+**/.cxx/
+**/.clangd/
+**/.clang-format
+**/.clang-tidy
+**/.test/
+**/.appanalyzer/
+
+# ===== Build & Log files =====
+**/hvigor_build.log
+**/hvigor_build_latest.log
+**/hvigor_build_stack.log
+
+# ===== Local secrets (DO NOT COMMIT) =====
+Aquarium_Device/include/secrets_local.h
+**/secrets_local.ets
+**/secrets_local.ts
+**/secrets_local.json
+**/secrets_local.json5
+docs/HuaweiCloud.local.md
+docs/HuaweiCloud.local.MD
+docs/HuaweiCloud.secrets.md
+docs/HuaweiCloud.secrets.local.md
+
+# ===== Temp & OS files =====
+_tmp_*
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini
+skill_urls.txt

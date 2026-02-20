@@ -1,0 +1,56 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 18pt 30pt 18pt 30pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 16pt 20pt;
+}
+ul { margin: 0; padding-left: 18pt; font-size: 16pt; line-height: 1.5; }
+li { margin-bottom: 8pt; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>固件关键实现</h1></div>
+  <div class="content">
+    <div class="card">
+      <ul>
+        <li>30s 周期采集与上报，异常数值容错与告警</li>
+        <li>AP 配网 + 自动重连，失败 3 次进入配网模式</li>
+        <li>SNTP 时间同步，用于 MQTT 鉴权签名</li>
+        <li>Flash 持久化（Magic + CRC），断电可恢复配置</li>
+        <li>DS18B20 非阻塞状态机 + ADC 换算/校准</li>
+        <li>OLED 多页轮播 + 蜂鸣器/LED 分级告警</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

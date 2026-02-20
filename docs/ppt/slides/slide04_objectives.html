@@ -1,0 +1,73 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #F8FAFC;
+  color: #1E293B;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  background: #0F172A;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 18pt 30pt;
+  display: flex;
+  flex-direction: column;
+}
+.row { display: flex; gap: 14pt; }
+.card {
+  flex: 1;
+  background: #FFFFFF;
+  border: 1pt solid #E2E8F0;
+  border-radius: 10pt;
+  padding: 14pt 16pt;
+  box-shadow: 2px 2px 10px rgba(15, 23, 42, 0.08);
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 16pt; color: #0F172A; }
+ul { margin: 0; padding-left: 16pt; font-size: 14pt; line-height: 1.5; }
+li { margin-bottom: 6pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #475569; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>建设目标与关键指标</h1></div>
+  <div class="content">
+    <div class="row">
+      <div class="card">
+        <h2>功能目标</h2>
+        <ul>
+          <li>多传感器实时监测：温度 / pH / TDS / 浊度 / 水位</li>
+          <li>执行器控制：加热棒、进水泵、排水泵、投饵舵机</li>
+          <li>OLED 本地显示 + 蜂鸣器/LED 分级告警</li>
+          <li>支持自动/手动模式与阈值配置</li>
+          <li>IoTDA 云端注册、影子上报、命令下发</li>
+          <li>HarmonyOS App 可视化仪表盘与远程控制</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>非功能指标</h2>
+        <ul>
+          <li>稳定性：设备连续运行 12 小时无异常复位</li>
+          <li>可靠性：传感器失效自动容错与安全值输出</li>
+          <li>易用性：AP 配网 ≤ 5 分钟完成</li>
+          <li>性能：影子刷新 1 秒内更新</li>
+          <li>安全性：AK/SK 签名，不硬编码密钥</li>
+          <li>可扩展性：新增传感器仅需扩展物模型</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">目标对齐 PRD 与验收标准，确保“设备—云—应用”闭环可演示。</p>
+  </div>
+</body>
+</html>

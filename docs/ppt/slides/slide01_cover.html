@@ -1,0 +1,81 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #0F172A;
+  color: #FFFFFF;
+  font-family: Arial, sans-serif;
+  display: flex;
+}
+.wrap {
+  margin: 36pt 44pt;
+  display: flex;
+  gap: 26pt;
+  align-items: center;
+}
+.left { flex: 1.4; }
+.right { flex: 1; }
+.accent {
+  width: 88pt;
+  height: 6pt;
+  background: #2563EB;
+  margin-bottom: 16pt;
+}
+h1 {
+  font-size: 34pt;
+  line-height: 1.2;
+  margin: 0 0 10pt 0;
+}
+.subtitle {
+  font-size: 18pt;
+  color: #93C5FD;
+  margin: 0 0 14pt 0;
+}
+.meta {
+  font-size: 12.5pt;
+  color: #E2E8F0;
+  margin: 4pt 0;
+}
+.card {
+  background: #111827;
+  border: 1.5pt solid #2563EB;
+  border-radius: 10pt;
+  padding: 14pt 16pt;
+}
+.card h2 {
+  font-size: 15pt;
+  margin: 0 0 8pt 0;
+  color: #BFDBFE;
+}
+ul { margin: 0; padding-left: 16pt; font-size: 12.5pt; line-height: 1.5; color: #E2E8F0; }
+li { margin-bottom: 6pt; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="left">
+      <div class="accent"></div>
+      <h1>基于 STM32 与华为云 IoT 的智能水族箱监测与控制系统</h1>
+      <p class="subtitle">毕业设计答辩 / IoT 端到端闭环项目</p>
+      <p class="meta">学生：XXX　学号：XXXXXXXX　学院/专业：XXX</p>
+      <p class="meta">指导老师：XXX　日期：2026 年 1 月</p>
+      <p class="meta">关键主题：多传感器感知 · 云端协同 · 远程运维 · 自动控制</p>
+    </div>
+    <div class="right">
+      <div class="card">
+        <h2>系统关键词</h2>
+        <ul>
+          <li>STM32F103RB + ESP32 AT 通信</li>
+          <li>温度 / pH / TDS / 浊度 / 水位监测</li>
+          <li>IoTDA 设备影子与命令下发</li>
+          <li>HarmonyOS 5.0.5 App 控制与展示</li>
+          <li>自动告警 + 投喂 + 泵控闭环</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

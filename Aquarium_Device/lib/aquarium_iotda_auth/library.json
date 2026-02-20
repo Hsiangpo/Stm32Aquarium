@@ -1,0 +1,12 @@
+{
+  "name": "aquarium_iotda_auth",
+  "version": "1.0.0",
+  "description": "Huawei IoTDA MQTT authentication (ClientId/Password generation)",
+  "keywords": ["iot", "mqtt", "huaweicloud", "auth"],
+  "license": "MIT",
+  "platforms": ["*"],
+  "frameworks": ["*"],
+  "dependencies": {
+    "aquarium_crypto": "*"
+  }
+}

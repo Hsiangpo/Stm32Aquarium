@@ -1,0 +1,11 @@
+{
+  "name": "aquarium_sensors",
+  "version": "1.0.0",
+  "description": "Aquarium sensors conversion library (hardware-independent)",
+  "keywords": ["aquarium", "sensors", "adc", "conversion"],
+  "authors": [
+    {
+      "name": "Aquarium Project"
+    }
+  ]
+}

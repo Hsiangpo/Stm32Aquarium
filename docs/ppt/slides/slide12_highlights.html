@@ -1,0 +1,55 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 18pt 30pt 18pt 30pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 16pt 20pt;
+}
+ul { margin: 0; padding-left: 18pt; font-size: 16pt; line-height: 1.5; }
+li { margin-bottom: 8pt; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>创新点与亮点</h1></div>
+  <div class="content">
+    <div class="card">
+      <ul>
+        <li>三种联网方式：默认 Wi-Fi / 用户 Wi-Fi / AP 配网（支持手机热点）</li>
+        <li>设备、云、应用数据模型一致：13 属性 + 3 类命令</li>
+        <li>REST 刷新与 MQTT 实时订阅并存，演示更直观</li>
+        <li>安全设计：AK/SK 签名，密钥默认不落盘</li>
+        <li>可扩展架构：新增传感器只需扩展物模型与界面</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

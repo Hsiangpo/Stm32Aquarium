@@ -1,0 +1,25 @@
+{
+  "forms": [
+    {
+      "name": "aquarium_card",
+      "description": "Aquarium status widget (reads last snapshot from local preferences)",
+      "src": "ets/pages/WidgetCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "auto",
+      "isDefault": true,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "00:00",
+      "updateDuration": 1,
+      "formVisibleNotify": true,
+      "supportDimensions": [
+        "2*2",
+        "2*4"
+      ],
+      "defaultDimension": "2*2"
+    }
+  ]
+}

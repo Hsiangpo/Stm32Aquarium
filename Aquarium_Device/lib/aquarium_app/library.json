@@ -1,0 +1,12 @@
+{
+  "name": "aquarium_app",
+  "version": "1.0.0",
+  "description": "Smart aquarium application layer orchestrator",
+  "keywords": ["iot", "aquarium", "app", "orchestrator"],
+  "license": "MIT",
+  "platforms": ["*"],
+  "frameworks": ["*"],
+  "dependencies": {
+    "aquarium_iotda": "*"
+  }
+}

@@ -1,0 +1,71 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #F8FAFC;
+  color: #1E293B;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  background: #0F172A;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 16pt 30pt;
+  display: flex;
+  flex-direction: column;
+}
+.row { display: flex; gap: 14pt; }
+.card {
+  flex: 1;
+  background: #FFFFFF;
+  border: 1pt solid #E2E8F0;
+  border-radius: 10pt;
+  padding: 14pt 16pt;
+  box-shadow: 2px 2px 10px rgba(15, 23, 42, 0.08);
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 16pt; color: #0F172A; }
+ul { margin: 0; padding-left: 16pt; font-size: 13pt; line-height: 1.5; }
+li { margin-bottom: 6pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #475569; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>物模型与协议设计</h1></div>
+  <div class="content">
+    <div class="row">
+      <div class="card">
+        <h2>Aquarium 属性服务（13 字段）</h2>
+        <ul>
+          <li>环境类：temperature / ph / tds / turbidity / water_level</li>
+          <li>执行器：heater / pump_in / pump_out</li>
+          <li>运行模式：auto_mode / feeding_in_progress</li>
+          <li>投喂：feed_countdown（周期或一次性）</li>
+          <li>告警：alarm_level / alarm_muted</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>命令与 Topic</h2>
+        <ul>
+          <li>control：加热/泵/投喂/静音/目标温度</li>
+          <li>set_thresholds：温度/pH/TDS/浊度/水位阈值</li>
+          <li>set_config：Wi-Fi + 校准系数</li>
+          <li>上报 Topic：$oc/devices/{id}/sys/properties/report</li>
+          <li>命令 Topic：$oc/devices/{id}/sys/commands/#</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">字段与接口保持设备端与应用端一致，避免“字段漂移”导致的控制失效。</p>
+  </div>
+</body>
+</html>

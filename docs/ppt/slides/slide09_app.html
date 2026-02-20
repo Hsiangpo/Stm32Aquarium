@@ -1,0 +1,57 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 18pt 30pt 18pt 30pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 16pt 20pt;
+}
+ul { margin: 0; padding-left: 18pt; font-size: 16pt; line-height: 1.5; }
+li { margin-bottom: 8pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #3C4A5D; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>应用侧功能（HarmonyOS 5.0.5）</h1></div>
+  <div class="content">
+    <div class="card">
+      <ul>
+        <li>仪表盘：13 属性 + 在线/告警 + 历史/趋势图</li>
+        <li>控制：加热、泵、投喂、静音、自动/手动模式</li>
+        <li>阈值&配置：水质阈值、Wi-Fi、校准参数</li>
+        <li>自动刷新（30s）+ 可选 MQTT 实时订阅</li>
+        <li>桌面卡片、系统通知、分布式同步（加分项）</li>
+      </ul>
+    </div>
+    <p class="note">基于 ArkTS Stage 模型开发，REST + MQTT 双通道对接 IoTDA。</p>
+  </div>
+</body>
+</html>

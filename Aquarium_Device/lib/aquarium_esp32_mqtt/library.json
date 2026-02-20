@@ -1,0 +1,14 @@
+{
+  "name": "aquarium_esp32_mqtt",
+  "version": "1.0.0",
+  "description": "ESP32 AT-based WiFi/MQTT connection layer for Huawei IoTDA",
+  "keywords": ["esp32", "at", "mqtt", "wifi", "iotda"],
+  "license": "MIT",
+  "platforms": ["*"],
+  "frameworks": ["*"],
+  "dependencies": {
+    "aquarium_at": "*",
+    "aquarium_iotda_auth": "*",
+    "aquarium_app": "*"
+  }
+}

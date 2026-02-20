@@ -1,0 +1,77 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 16pt 30pt 16pt 30pt;
+  display: flex;
+  flex-direction: column;
+}
+.info {
+  font-size: 16pt;
+  margin: 0 0 12pt 0;
+  color: #0B1F3A;
+}
+.row { display: flex; gap: 16pt; }
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 12pt 16pt;
+  flex: 1;
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 17pt; color: #0B1F3A; }
+ul { margin: 0; padding-left: 16pt; font-size: 14pt; line-height: 1.4; }
+li { margin-bottom: 4pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #3C4A5D; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>设备端硬件与传感器</h1></div>
+  <div class="content">
+    <p class="info">核心控制：STM32 NUCLEO-F103RB + ESP32-WROOM (AT) + OLED 显示</p>
+    <div class="row">
+      <div class="card">
+        <h2>传感器</h2>
+        <ul>
+          <li>DS18B20 防水温度探头</li>
+          <li>pH 传感器（BNC 探头）</li>
+          <li>TDS 水质传感器</li>
+          <li>浊度传感器</li>
+          <li>水位传感器（分压）</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>执行器/外设</h2>
+        <ul>
+          <li>继电器控制：进水泵/排水泵/加热棒</li>
+          <li>舵机投饵装置</li>
+          <li>蜂鸣器 + LED 分级告警</li>
+          <li>OLED 状态轮播显示</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">关键引脚与接线详见 Wiring_Guide.md，支持 12V 供电 + 多路稳压。</p>
+  </div>
+</body>
+</html>

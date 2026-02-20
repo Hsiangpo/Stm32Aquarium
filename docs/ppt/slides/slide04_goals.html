@@ -1,0 +1,55 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #E8F4F8;
+  color: #1B2631;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 60pt;
+  background: #0B1F3A;
+  display: flex;
+  align-items: center;
+}
+.header h1 {
+  color: #FFFFFF;
+  font-size: 24pt;
+  margin: 0 0 0 30pt;
+}
+.content {
+  flex: 1;
+  margin: 20pt 30pt 20pt 30pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.card {
+  background: #FFFFFF;
+  border-left: 8pt solid #2A9D8F;
+  padding: 16pt 20pt;
+}
+ul { margin: 0; padding-left: 18pt; font-size: 17pt; line-height: 1.5; }
+li { margin-bottom: 8pt; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>建设目标</h1></div>
+  <div class="content">
+    <div class="card">
+      <ul>
+        <li>多传感器监测：温度、pH、TDS、浊度、水位</li>
+        <li>执行器控制：加热、进/排水泵、投饵、声光告警</li>
+        <li>断网/断电自动恢复，支持多种联网方式</li>
+        <li>对接华为云 IoTDA：注册、上报、命令下发、阈值配置</li>
+        <li>HarmonyOS App 仪表盘 + 控制 + 设置，实现闭环展示</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

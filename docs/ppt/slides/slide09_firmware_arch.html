@@ -1,0 +1,79 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #F8FAFC;
+  color: #1E293B;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  background: #0F172A;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 14pt 26pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.row { display: flex; gap: 12pt; }
+.card {
+  flex: 1;
+  background: #FFFFFF;
+  border: 1pt solid #E2E8F0;
+  border-radius: 10pt;
+  padding: 12pt 14pt;
+  box-shadow: 2px 2px 10px rgba(15, 23, 42, 0.08);
+}
+.card h2 { margin: 0 0 6pt 0; font-size: 15pt; color: #0F172A; }
+ul { margin: 0; padding-left: 15pt; font-size: 12.5pt; line-height: 1.45; }
+li { margin-bottom: 5pt; }
+.note { margin-top: 10pt; font-size: 12.5pt; color: #475569; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>设备端软件架构</h1></div>
+  <div class="content">
+    <div class="row">
+      <div class="card">
+        <h2>感知层</h2>
+        <ul>
+          <li>ADC 采样与物理量换算</li>
+          <li>DS18B20 非阻塞状态机</li>
+          <li>传感器校准系数</li>
+          <li>异常值过滤与容错</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>控制层</h2>
+        <ul>
+          <li>自动控制策略（阈值）</li>
+          <li>投喂周期/一次性倒计时</li>
+          <li>告警等级与静音逻辑</li>
+          <li>执行器状态回写</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>通信与系统层</h2>
+        <ul>
+          <li>ESP32 AT 指令驱动</li>
+          <li>MQTT 连接与重连</li>
+          <li>Flash 配置持久化</li>
+          <li>OLED 状态轮播显示</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">模块化拆分提升可维护性与复用性，便于后续扩展更多传感器与指令。</p>
+  </div>
+</body>
+</html>

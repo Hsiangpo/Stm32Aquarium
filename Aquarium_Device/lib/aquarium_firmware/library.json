@@ -1,0 +1,10 @@
+{
+  "name": "aquarium_firmware",
+  "version": "1.0.0",
+  "description": "智能水族箱固件编排器，整合 App、MQTT 和传感器驱动",
+  "keywords": ["aquarium", "firmware", "orchestrator"],
+  "dependencies": {
+    "aquarium_app": "*",
+    "aquarium_esp32_mqtt": "*"
+  }
+}

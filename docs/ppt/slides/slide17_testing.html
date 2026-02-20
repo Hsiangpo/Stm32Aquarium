@@ -1,0 +1,84 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { width: 720pt; height: 405pt; margin: 0; }
+body {
+  background: #F8FAFC;
+  color: #1E293B;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  height: 58pt;
+  background: #0F172A;
+  border-bottom: 4pt solid #2563EB;
+  display: flex;
+  align-items: center;
+}
+.header h1 { color: #FFFFFF; font-size: 22pt; margin: 0 0 0 28pt; }
+.content {
+  flex: 1;
+  margin: 12pt 24pt 30pt 24pt;
+  display: flex;
+  flex-direction: column;
+}
+.table {
+  background: #FFFFFF;
+  border: 1pt solid #E2E8F0;
+  border-radius: 10pt;
+  padding: 8pt 10pt;
+  box-shadow: 2px 2px 10px rgba(15, 23, 42, 0.08);
+}
+.row { display: flex; }
+.cell {
+  padding: 4pt 8pt;
+  border-bottom: 1pt solid #E2E8F0;
+  font-size: 12pt;
+}
+.head { background: #EFF6FF; font-weight: bold; }
+.col1 { width: 170pt; }
+.col2 { width: 260pt; }
+.col3 { width: 200pt; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>测试与验收结果</h1></div>
+  <div class="content">
+    <div class="table">
+      <div class="row">
+        <div class="cell head col1"><p>测试项</p></div>
+        <div class="cell head col2"><p>方法/指标</p></div>
+        <div class="cell head col3"><p>结果</p></div>
+      </div>
+      <div class="row">
+        <div class="cell col1"><p>连续运行</p></div>
+        <div class="cell col2"><p>12 小时运行无异常复位</p></div>
+        <div class="cell col3"><p>通过</p></div>
+      </div>
+      <div class="row">
+        <div class="cell col1"><p>属性上报</p></div>
+        <div class="cell col2"><p>IoTDA 影子 13 字段齐全</p></div>
+        <div class="cell col3"><p>通过</p></div>
+      </div>
+      <div class="row">
+        <div class="cell col1"><p>命令下发</p></div>
+        <div class="cell col2"><p>control/threshold/config 回包成功</p></div>
+        <div class="cell col3"><p>通过</p></div>
+      </div>
+      <div class="row">
+        <div class="cell col1"><p>配网流程</p></div>
+        <div class="cell col2"><p>AP 配网 ≤ 5 分钟完成</p></div>
+        <div class="cell col3"><p>通过</p></div>
+      </div>
+      <div class="row">
+        <div class="cell col1"><p>移动端刷新</p></div>
+        <div class="cell col2"><p>影子刷新 1 秒内更新</p></div>
+        <div class="cell col3"><p>通过</p></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

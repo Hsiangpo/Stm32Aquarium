@@ -1,0 +1,9 @@
+{
+  "name": "aquarium_crypto",
+  "version": "1.0.0",
+  "description": "Cryptographic primitives (SHA-256, HMAC-SHA256)",
+  "keywords": ["crypto", "sha256", "hmac"],
+  "license": "MIT",
+  "platforms": ["*"],
+  "frameworks": ["*"]
+}

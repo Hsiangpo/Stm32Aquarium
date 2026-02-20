@@ -1,0 +1,18 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/build
+/.hvigor
+.cxx
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer
+
+# Local secrets (DO NOT COMMIT)
+**/secrets_local.ets
+**/secrets_local.ts
+**/secrets_local.json
+**/secrets_local.json5

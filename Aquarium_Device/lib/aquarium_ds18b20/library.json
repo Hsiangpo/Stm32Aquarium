@@ -1,0 +1,11 @@
+{
+  "name": "aquarium_ds18b20",
+  "version": "1.0.0",
+  "description": "DS18B20 temperature sensor driver with non-blocking state machine",
+  "keywords": ["aquarium", "ds18b20", "temperature", "onewire"],
+  "authors": [
+    {
+      "name": "Aquarium Project"
+    }
+  ]
+}
