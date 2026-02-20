@@ -47,7 +47,7 @@
 | ------------------------- | ---------------------- |
 | `platformio.ini`          | PlatformIO 工程配置    |
 | `include/board_pins.h`    | 引脚映射               |
-| `include/secrets_local.h` | 本地秘密配置（不提交） |
+| `include/secrets.h`       | 固定演示配置（WiFi/IoTDA） |
 | `src/main.c`              | 固件入口               |
 | `lib/`                    | 分层库                 |
 | `test/`                   | 单元测试               |
@@ -132,7 +132,10 @@ WiFi 连接成功后自动通过 SNTP 获取网络时间，用于 IoTDA MQTT 鉴
 - 工程目录：`Aquarium_APP/`
 - 权限：`ohos.permission.INTERNET`
 - REST API：查询影子、下发命令（同步/异步）
-- 签名：AK/SK + SDK-HMAC-SHA256（不写死在代码中）
+- 签名：AK/SK + SDK-HMAC-SHA256（课设演示版采用固定内置参数）
+- 云端参数：固定内置于 `entry/src/main/ets/config/iotdaDefaults.ts`
+- 前端约定：不提供华为云参数配置入口（仅保留业务控制与阈值配置）
+- 端口约定：默认 MQTT `1883`；若改为 `8883` 需同步启用 TLS 证书配置
 
 ### 主要功能
 
@@ -143,4 +146,4 @@ WiFi 连接成功后自动通过 SNTP 获取网络时间，用于 IoTDA MQTT 鉴
 
 ---
 
-_文档版本：v2.0 | 更新日期：2026-01-18_
+_文档版本：v2.1 | 更新日期：2026-02-20_

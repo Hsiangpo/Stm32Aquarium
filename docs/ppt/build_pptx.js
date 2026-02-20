@@ -1,10 +1,20 @@
 ﻿const path = require('path');
+const fs = require('fs');
 
 process.env.NODE_PATH = path.join(__dirname, 'node_modules');
 require('module').Module._initPaths();
 
 const pptxgen = require('pptxgenjs');
-const html2pptx = require('C:\\Users\\Administrator\\.codex\\skills\\pptx\\scripts\\html2pptx.js');
+const html2pptxCandidates = [
+  path.join(process.env.USERPROFILE || '', '.codex', 'skills', 'skills', 'pptx', 'scripts', 'html2pptx.js'),
+  path.join(process.env.USERPROFILE || '', '.codex', 'skills', 'pptx', 'scripts', 'html2pptx.js'),
+  'C:\\Users\\Administrator\\.codex\\skills\\pptx\\scripts\\html2pptx.js'
+];
+const html2pptxPath = html2pptxCandidates.find((p) => p && fs.existsSync(p));
+if (!html2pptxPath) {
+  throw new Error(`Cannot find html2pptx.js. Tried: ${html2pptxCandidates.join(', ')}`);
+}
+const html2pptx = require(html2pptxPath);
 
 async function build() {
   const pptx = new pptxgen();

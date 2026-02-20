@@ -68,11 +68,11 @@ struct About {
                   .fontWeight(FontWeight.Bold)
                   .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 
-                Text('1. 打开“设置”：填写 Base URL / Project ID / Device ID，并输入 AK/SK。')
+                Text('1. 直接在首页点击“刷新”：项目已内置固定连接参数。')
                   .fontSize(14)
                   .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 
-                Text('2. 回到首页点击“刷新”：查看 13 个核心水质属性与设备在线状态。')
+                Text('2. 查看 13 个核心水质属性与设备在线状态。')
                   .fontSize(14)
                   .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 
@@ -88,14 +88,14 @@ struct About {
 
             GlassCard() {
               Column({ space: 12 }) {
-                Text('安全提示')
+                Text('演示模式说明')
                   .fontSize(18)
                   .fontWeight(FontWeight.Bold)
                   .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 
-                Text('AK/SK 与 Device Secret 默认仅保存在内存中；仅在设置页开启“本机保存”时写入加密存储。请勿将凭证提交到代码仓库。')
+                Text('华为云区域/端点/设备ID/密钥为内置固定值，前端不提供配置入口。')
                   .fontSize(14)
-                  .fontColor(UiConstants.COLOR_DANGER)
+                  .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
                   .lineHeight(20)
               }
             }

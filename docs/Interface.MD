@@ -1,6 +1,6 @@
 # 智能水族箱接口文档
 
-本文档定义智能水族箱系统的所有接口，包括设备侧（STM32 + ESP32）与华为云的通信协议，以及应用侧（鸿蒙 App）与华为云的 REST API 接口。
+本文档定义智能水族箱系统的所有接口，包括设备侧（STM32 + ESP32）与华为云的通信协议，以及应用侧（鸿蒙 App）与华为云的 REST API 接口。当前课设演示版采用固定内置云参数，前端不提供云端配置入口。
 
 ---
 
@@ -11,10 +11,12 @@
 | 参数      | 值                                                            |
 | --------- | ------------------------------------------------------------- |
 | Broker    | `8cee850016.st1.iotda-device.cn-north-4.myhuaweicloud.com`    |
-| Port      | 1883 (MQTT) / 8883 (MQTTS)                                    |
+| Port      | 默认 1883 (MQTT)，可扩展为 8883 (MQTTS)                       |
 | Client ID | `{device_id}_0_{sign_type}_{YYYYMMDDHH}`                      |
 | Username  | `690237639798273cc4fd09cb_MyAquarium_01`                      |
 | Password  | `HMACSHA256(secret, timestamp)`（timestamp 为 UTC `YYYYMMDDHH`） |
+
+> 说明：当前仓库设备端默认走 1883；若切换 8883，需要在 ESP32 AT 链路增加 TLS 连接配置。
 
 > 说明：华为云 IoTDA 文档中 `HMACSHA256(secret, timestamp)` 表示“以 `secret` 为消息内容、`timestamp` 为密钥”。如果你使用常见的 HMAC API（通常签名函数参数为 `key,msg`），等价写法为：`HMAC_SHA256(key=timestamp, msg=secret)`。
 
@@ -95,7 +97,8 @@ $oc/devices/{device_id}/sys/commands/request_id={request_id}
 }
 ```
 
-> 说明：`feed_once_delay` 单位为秒，表示一次性投喂倒计时（建议范围 1~86400）。
+> 说明：`feed_once_delay` 单位为秒，表示一次性投喂倒计时（建议范围 1~86400）。  
+> 云端当前产品模型（2026-02-20）中 `feed` 为 `string` 且未配置 `feed_once_delay`；若按本文接口联调，请先在 IoTDA 产品模型中同步字段类型与参数。
 
 #### 1.3.2 set_thresholds 命令
 
@@ -179,7 +182,11 @@ $oc/devices/{device_id}/sys/commands/request_id={request_id}
 | Base URL   | `https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com` |
 | Project ID | `79d1f76b8f0e47fd934f3eb393bf2e7f`                              |
 | Device ID  | `690237639798273cc4fd09cb_MyAquarium_01`                        |
+| AK         | `HPUA4JX3YFP88FSKLZ8N`                                           |
+| SK         | `vZ2ggGBLX6ekyeZWDxopQM9J5DXmMSbUI5JNfgDg`                       |
 | 签名方式   | AK/SK 签名                                                      |
+
+> 说明：演示版参数固定内置在 `Aquarium_APP/entry/src/main/ets/config/iotdaDefaults.ts`，设置页无云端参数输入项。
 
 ---
 
@@ -450,4 +457,4 @@ export async function buildAuthorization(params: {
 
 ---
 
-_文档版本：v1.1 | 更新日期：2025-12-13_
+_文档版本：v1.2 | 更新日期：2026-02-20_

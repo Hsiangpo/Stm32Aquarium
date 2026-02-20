@@ -4,6 +4,7 @@
  */
 
 #include "aquarium_at.h"
+#include <stdio.h>
 #include <string.h>
 #include <unity.h>
 

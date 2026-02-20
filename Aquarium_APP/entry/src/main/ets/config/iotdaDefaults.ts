@@ -1,4 +1,5 @@
 export const IOTDA_DEFAULTS = {
+  // 单人课设演示：连接参数固定内置
   baseUrl: 'https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com',
   projectId: '79d1f76b8f0e47fd934f3eb393bf2e7f',
   deviceId: '690237639798273cc4fd09cb_MyAquarium_01',

@@ -54,8 +54,7 @@
 
 **操作**（`Aquarium_APP/`）：
 
-- [ ] 打开 App 首页，填写 `Base URL / Project ID / Device ID`
-- [ ] 填写 `AK / SK`（仅用于本机调试，不要写入仓库）
+- [ ] 打开 App 首页（演示模式参数已内置）
 - [ ] 点击“刷新影子/状态”
 
 **预期**：
@@ -220,7 +219,6 @@
 
 **操作**：
 
-- [ ] 在首页填写 `Device Secret`（设备密钥，默认不落盘）
 - [ ] 打开“实时订阅”开关
 - [ ] 观察“实时状态”变为 `CONNECTED`
 - [ ] 等待设备下一次属性上报
@@ -311,8 +309,8 @@
 
 **预期**：
 
-- [ ] 设备 B 自动填充 `Base URL / Project ID / Device ID` 等非敏感配置
-- [ ] AK/SK 与 Device Secret 不会被同步
+- [ ] 设备 B 同步“自动刷新/告警通知”等偏好开关
+- [ ] `Base URL / Project ID / Device ID / AK / SK / Device Secret` 保持内置固定值，不因同步而变化
 
 **建议截图**：
 
@@ -336,6 +334,6 @@
 
 ## 14. 常见问题（快速定位）
 
-- `HTTP 401`：通常是 AK/SK、签名、`Base URL`、`project_id`/`device_id` 填写错误。
+- `HTTP 401`：通常是内置 AK/SK 与云端不匹配、签名时间异常，或后端 `project_id`/`device_id` 与内置值不一致。
 - `HTTP 404`：多为 `project_id` / `device_id` 不存在或路径拼写错误。
 - `HTTP 408/5xx` 或 “命令超时”：设备离线、网络抖动、或设备正在重连（例如下发 WiFi 配置后短暂离线）。

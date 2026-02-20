@@ -16,7 +16,6 @@ import { publishAlarmNotification } from '../utils/alarmNotifier';
 import { loadAppSettings, saveAlarmNotifyEnabled, saveAppSettings, saveAutoRefreshEnabled, saveDistributedSyncEnabled } from '../utils/appSettings';
 import { saveCardSnapshot } from '../utils/cardSnapshotStore';
 import { GlobalContext } from '../utils/globalContext';
-import { getSessionSecrets } from '../utils/sessionSecrets';
 import {
   DistributedDeviceInfo,
   loadSharedSettings,
@@ -285,6 +284,7 @@ struct Index {
   }
 
   private buildClient(): IotdaRestClient {
+    this.applyHardcodedDefaults();
     return new IotdaRestClient(
       {
         baseUrl: this.baseUrl,
@@ -409,10 +409,6 @@ struct Index {
   private async restoreAppSettings(): Promise<void> {
     const saved = await loadAppSettings();
 
-    if (saved.baseUrl) this.baseUrl = saved.baseUrl;
-    if (saved.projectId) this.projectId = saved.projectId;
-    if (saved.deviceId) this.deviceId = saved.deviceId;
-
     if (typeof saved.saveCredentials === 'boolean') {
       this.saveCredentials = saved.saveCredentials;
     }
@@ -428,10 +424,6 @@ struct Index {
       if (saved.deviceSecret) this.deviceSecret = saved.deviceSecret;
     }
 
-    const session = getSessionSecrets();
-    if (!this.ak && session.ak) this.ak = session.ak;
-    if (!this.sk && session.sk) this.sk = session.sk;
-    if (!this.deviceSecret && session.deviceSecret) this.deviceSecret = session.deviceSecret;
     this.applyHardcodedDefaults();
 
     if (typeof saved.autoRefreshEnabled === 'boolean') {
@@ -446,6 +438,7 @@ struct Index {
   }
 
   private async persistAppSettings(): Promise<void> {
+    this.applyHardcodedDefaults();
     await saveAppSettings({
       baseUrl: this.baseUrl.trim(),
       projectId: this.projectId.trim(),
@@ -472,35 +465,22 @@ struct Index {
     if (!params) {
       return;
     }
-    const baseUrl = params.baseUrl;
-    const projectId = params.projectId;
-    const deviceId = params.deviceId;
-    if (typeof baseUrl === 'string' && baseUrl.trim()) {
-      this.baseUrl = baseUrl.trim();
-    }
-    if (typeof projectId === 'string' && projectId.trim()) {
-      this.projectId = projectId.trim();
-    }
-    if (typeof deviceId === 'string' && deviceId.trim()) {
-      this.deviceId = deviceId.trim();
-    }
-    this.setInfo('已从分布式流转参数恢复连接配置');
+    void params;
+    this.applyHardcodedDefaults();
+    this.setInfo('已收到流转参数；演示模式下连接参数固定为内置值');
   }
 
   private syncSessionSecrets(): void {
-    const session = getSessionSecrets();
-    if (!this.ak.trim()) this.ak = session.ak || IOTDA_DEFAULTS.ak;
-    if (!this.sk.trim()) this.sk = session.sk || IOTDA_DEFAULTS.sk;
-    if (!this.deviceSecret.trim()) this.deviceSecret = session.deviceSecret || IOTDA_DEFAULTS.deviceSecret;
+    this.applyHardcodedDefaults();
   }
 
   private applyHardcodedDefaults(): void {
-    if (!this.baseUrl.trim()) this.baseUrl = IOTDA_DEFAULTS.baseUrl;
-    if (!this.projectId.trim()) this.projectId = IOTDA_DEFAULTS.projectId;
-    if (!this.deviceId.trim()) this.deviceId = IOTDA_DEFAULTS.deviceId;
-    if (!this.ak.trim()) this.ak = IOTDA_DEFAULTS.ak;
-    if (!this.sk.trim()) this.sk = IOTDA_DEFAULTS.sk;
-    if (!this.deviceSecret.trim()) this.deviceSecret = IOTDA_DEFAULTS.deviceSecret;
+    this.baseUrl = IOTDA_DEFAULTS.baseUrl;
+    this.projectId = IOTDA_DEFAULTS.projectId;
+    this.deviceId = IOTDA_DEFAULTS.deviceId;
+    this.ak = IOTDA_DEFAULTS.ak;
+    this.sk = IOTDA_DEFAULTS.sk;
+    this.deviceSecret = IOTDA_DEFAULTS.deviceSecret;
   }
 
   private updateDistributedSyncSubscription(): void {
@@ -530,11 +510,9 @@ struct Index {
       if (!this.distributedSyncEnabled) {
         return;
       }
-      if (s.baseUrl) this.baseUrl = s.baseUrl;
-      if (s.projectId) this.projectId = s.projectId;
-      if (s.deviceId) this.deviceId = s.deviceId;
       this.autoRefreshEnabled = !!s.autoRefreshEnabled;
       this.alarmNotifyEnabled = !!s.alarmNotifyEnabled;
+      this.applyHardcodedDefaults();
       this.updateAutoRefreshTimer();
       this.setInfo(`收到分布式同步更新（${s.updatedAt || 'unknown'}）`);
     });
@@ -554,7 +532,7 @@ struct Index {
   private async publishDistributedSettings(): Promise<void> {
     const payload = this.buildSharedSettingsPayload();
     if (!payload.baseUrl || !payload.projectId || !payload.deviceId) {
-      throw new Error('分布式同步需要先填写 Base URL / Project ID / Device ID');
+      throw new Error('分布式同步参数缺失，请检查内置配置');
     }
     await publishSharedSettings(payload);
     await this.showToast('已发布到分布式同步（同账号设备可拉取）');
@@ -565,11 +543,9 @@ struct Index {
     if (!s) {
       throw new Error('未找到分布式配置：请先在任意设备“发布到分布式”');
     }
-    if (s.baseUrl) this.baseUrl = s.baseUrl;
-    if (s.projectId) this.projectId = s.projectId;
-    if (s.deviceId) this.deviceId = s.deviceId;
     this.autoRefreshEnabled = !!s.autoRefreshEnabled;
     this.alarmNotifyEnabled = !!s.alarmNotifyEnabled;
+    this.applyHardcodedDefaults();
     this.updateAutoRefreshTimer();
     await this.showToast(`已从分布式拉取配置（${s.updatedAt || 'unknown'}）`);
   }
@@ -622,7 +598,7 @@ struct Index {
 
     const payload = this.buildSharedSettingsPayload();
     if (!payload.baseUrl || !payload.projectId || !payload.deviceId) {
-      throw new Error('流转需要先填写 Base URL / Project ID / Device ID');
+      throw new Error('流转参数缺失，请检查内置配置');
     }
     await startRemoteFlow(picked.deviceId, payload);
     await this.showToast(`已发起流转：${picked.deviceName || picked.deviceId}`);

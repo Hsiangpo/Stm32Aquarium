@@ -15,7 +15,8 @@
 
 1. 安装 VSCode 扩展：`PlatformIO IDE`
 2. 安装 `STM32CubeProgrammer`（提供 ST-LINK 驱动/升级工具）
-3. 用 VSCode 打开 `Aquarium_Device/`，在 PlatformIO 面板执行 Build/Upload（或用终端 `pio run -t upload`）
+3. 如需修改现场 WiFi，请先编辑 `Aquarium_Device/include/secrets.h` 中 `WIFI_SSID/WIFI_PASSWORD`
+4. 用 VSCode 打开 `Aquarium_Device/`，在 PlatformIO 面板执行 Build/Upload（或用终端 `pio run -t upload`）
 
 首次烧录成功后，板载 LED（PA5/LD2）会闪烁用于验证工程可运行。
 
@@ -27,9 +28,9 @@
 
 1. 用 DevEco Studio **5.0.5（API 17）** 打开 `Aquarium_APP/`
 2. 连接真机或启动模拟器运行安装
-3. 在首页填写 `Base URL / Project ID / Device ID / AK / SK`，点击“刷新影子/状态”即可看到 13 个核心属性与在线/告警状态
+3. 项目已内置演示参数（`Base URL / Project ID / Device ID / AK / SK / Device Secret`），前端不提供云端参数配置入口；直接点击“刷新影子/状态”即可看到 13 个核心属性与在线/告警状态
 
-安全提示：
+说明：
 
-- 仓库内不写死 AK/SK；如仅用于本机调试，可在 App 内开启“本机保存 AK/SK”开关后再保存（默认不落盘）。
+- 本仓库为单人课设演示版，连接参数采用固定内置值。
 - 端到端验收与截图点位清单见 `docs/Acceptance_Checklist.md`；App 侧更详细运行说明见 `Aquarium_APP/README.md`。

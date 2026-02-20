@@ -17,9 +17,7 @@
 
 1. 用 DevEco Studio 打开本工程目录：`Aquarium_APP/`
 2. 连接真机或启动模拟器，运行安装
-3. 打开应用后，点击右上角“设置”，在设置页填写：
-   - `Base URL` / `Project ID` / `Device ID`（见 `docs/Interface.MD` 的“应用侧接口（REST API）”）
-   - `AK` / `SK`（华为云控制台获取）
+3. 项目已内置演示参数（`Base URL / Project ID / Device ID / AK / SK / Device Secret`）
 4. 回到首页点击“**刷新**”
    - 成功后：仪表盘展示在线状态、告警状态与 13 项属性
    - 可开启“自动刷新（30s/次）”与设备上报频率保持一致（开关会持久化）
@@ -40,7 +38,7 @@ App 可直连 IoTDA **Device Endpoint**（TCP MQTT `1883`，不是 App Endpoint�
 
 使用方式：
 
-1. 设置页中填写 `Device Secret`（设备密钥，默认不落盘）
+1. 使用内置 `Device Secret`（演示模式固定值）
 2. 打开“实时订阅”开关
 3. 设备上报一次属性后，App 会：
    - 无需手动刷新即可更新仪表盘数值
@@ -112,14 +110,11 @@ App 可直连 IoTDA **Device Endpoint**（TCP MQTT `1883`，不是 App Endpoint�
 - 只同步 **非敏感** 配置，AK/SK 与 Device Secret 均不会被分布式同步。
 - 流转/同步需要系统层完成“同账号设备互信/组网”（可信设备列表为空时属正常）。
 
-## 本地持久化与安全
+## 演示模式说明
 
-- 首页“保存连接参数”会将 `Base URL / Project ID / Device ID` 持久化到本机 Preferences。
-- **AK/SK 默认不落盘**。
-  - 如仅用于调试，可开启“本机保存 AK/SK（默认关闭）”，再点击“保存连接参数”写入本机。
-  - 不建议在生产环境或共享设备上开启；也不要在截图/日志中泄露 AK/SK。
-- `Device Secret`（设备密钥）默认不落盘；可选开启“本机保存 Device Secret”（默认关闭）写入本机 Preferences。
-- 仓库已在 `Aquarium_APP/.gitignore` 忽略 `secrets_local.*`（如你选择用本地文件管理密钥）。
+- 本仓库为单人课设演示版，连接参数采用固定内置值。
+- 设置页仅保留演示说明与行为开关，不提供华为云连接参数编辑入口。
+- 分布式同步仍可同步“自动刷新/告警通知”等非敏感开关，不改变固定连接参数。
 
 ## 主要代码位置
 

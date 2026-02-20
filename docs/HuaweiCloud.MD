@@ -1,6 +1,6 @@
 # 华为云 IoTDA 配置文档
 
-本文档定义智能水族箱在华为云 IoT 设备接入服务（IoTDA）上的所有配置参数，供设备侧和应用侧开发对齐使用。
+本文档定义智能水族箱在华为云 IoT 设备接入服务（IoTDA）上的配置参数，供设备侧和应用侧开发对齐使用。文中“云端实测数据”基于 2026-02-20 控制台核对结果。
 
 > **编码说明**：本文档使用 UTF-8 编码，请用支持 UTF-8 的编辑器打开。
 
@@ -22,6 +22,8 @@
 | MQTTS | `8cee850016.st1.iotda-device.cn-north-4.myhuaweicloud.com` | 8883 |
 | HTTPS | `8cee850016.st1.iotda-device.cn-north-4.myhuaweicloud.com` | 443  |
 
+> 说明：本仓库设备端当前默认走 MQTT `1883`；控制台“MQTT连接参数”弹窗通常展示 `8883/MQTTS`，若要切换需改造 ESP32 AT 的 TLS 连接能力。
+
 ### 1.2 应用接入地址（鸿蒙 App REST API 使用）
 
 | 协议  | 地址                                                    | 端口 |
@@ -29,6 +31,21 @@
 | HTTPS | `8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com` | 443  |
 | AMQPS | `8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com` | 5671 |
 | MQTTS | `8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com` | 8883 |
+
+### 1.3 课设演示内置参数（代码硬编码）
+
+| 配置项 | 值 |
+| --- | --- |
+| App Base URL | `https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com` |
+| Project ID | `79d1f76b8f0e47fd934f3eb393bf2e7f` |
+| Device ID | `690237639798273cc4fd09cb_MyAquarium_01` |
+| AK | `HPUA4JX3YFP88FSKLZ8N` |
+| SK | `vZ2ggGBLX6ekyeZWDxopQM9J5DXmMSbUI5JNfgDg` |
+| Device Secret | `z748464wo946` |
+| Device MQTT Host | `8cee850016.st1.iotda-device.cn-north-4.myhuaweicloud.com` |
+| Device MQTT Port | `1883` |
+
+> 代码位置：`Aquarium_Device/include/secrets.h`、`Aquarium_APP/entry/src/main/ets/config/iotdaDefaults.ts`
 
 ---
 
@@ -49,7 +66,7 @@
 | -------- | ---------------------------------------- |
 | 设备 ID  | `690237639798273cc4fd09cb_MyAquarium_01` |
 | 设备标识 | `MyAquarium_01`                          |
-| 设备密钥 | `<YOUR_DEVICE_SECRET>`（敏感信息：不要提交到仓库） |
+| 设备密钥 | `z748464wo946`（课设演示固定值） |
 
 ### 3.1 MQTT 鉴权参数
 
@@ -137,11 +154,8 @@ password  = HMACSHA256("<device_secret>", "2025121312")
 | `pump_out`    | bool     | 开启/关闭排水泵   |
 | `mute`        | bool     | 静音告警          |
 | `auto_mode`   | bool     | 切换自动/手动模式 |
-| `feed`        | bool     | 立即投喂一次      |
-| `feed_once_delay` | int  | 一次性投喂倒计时（秒） |
+| `feed`        | string   | 立即投喂一次（云端当前模型） |
 | `target_temp` | float    | 目标温度 ℃        |
-
-> 备注：`feed_once_delay` 建议范围 1~86400 秒（一次性预约投喂）。
 
 ---
 
@@ -156,18 +170,18 @@ password  = HMACSHA256("<device_secret>", "2025121312")
 
 | 参数名               | 数据类型 | 说明                 |
 | -------------------- | -------- | -------------------- |
-| `temp_min`           | float    | 温度下限 ℃           |
-| `temp_max`           | float    | 温度上限 ℃           |
-| `ph_min`             | float    | pH 下限              |
-| `ph_max`             | float    | pH 上限              |
-| `tds_warn`           | int      | TDS 警告阈值 ppm     |
-| `tds_critical`       | int      | TDS 严重阈值 ppm     |
-| `turbidity_warn`     | int      | 浊度警告阈值 NTU     |
-| `turbidity_critical` | int      | 浊度严重阈值 NTU     |
-| `level_min`          | int      | 水位下限 %           |
-| `level_max`          | int      | 水位上限 %           |
+| `temp_min`           | decimal  | 温度下限 ℃           |
+| `temp_max`           | decimal  | 温度上限 ℃           |
+| `ph_min`             | decimal  | pH 下限              |
+| `ph_max`             | decimal  | pH 上限              |
+| `tds_warn`           | decimal  | TDS 警告阈值 ppm     |
+| `tds_critical`       | decimal  | TDS 严重阈值 ppm     |
+| `turbidity_warn`     | decimal  | 浊度警告阈值 NTU     |
+| `turbidity_critical` | decimal  | 浊度严重阈值 NTU     |
+| `level_min`          | decimal  | 水位下限 %           |
+| `level_max`          | decimal  | 水位上限 %           |
 | `feed_interval`      | int      | 自动投喂间隔（小时） |
-| `feed_amount`        | int      | 投喂量（档位）       |
+| `feed_amount`        | string   | 投喂量（档位）       |
 
 ---
 
@@ -186,6 +200,12 @@ password  = HMACSHA256("<device_secret>", "2025121312")
 | `wifi_password` | string   | Wi-Fi 密码    |
 | `ph_offset`     | decimal  | pH 校准偏移量 |
 | `tds_factor`    | decimal  | TDS 校准系数  |
+
+### 4.5 当前云端模型与代码差异（2026-02-20）
+
+- 云端 `aquarium_control.control` 中 `feed` 为 `string`，且未定义 `feed_once_delay`。
+- 当前固件/应用实现中 `feed` 按 `bool` 解析，并支持 `feed_once_delay`（预约一次投喂）。
+- 如需完整演示“预约一次投喂”，建议在 IoTDA 产品模型中将 `feed` 改为 `bool`，并补充 `feed_once_delay:int`。
 
 ---
 
@@ -225,11 +245,11 @@ Topic: $oc/devices/{device_id}/sys/commands/response/request_id={request_id}
 
 | 配置项          | 值                                         |
 | --------------- | ------------------------------------------ |
-| Access Key (AK) | `<YOUR_AK>`                                |
-| Secret Key (SK) | `<YOUR_SK>`                                |
+| Access Key (AK) | `HPUA4JX3YFP88FSKLZ8N`                     |
+| Secret Key (SK) | `vZ2ggGBLX6ekyeZWDxopQM9J5DXmMSbUI5JNfgDg` |
 | Project ID      | `79d1f76b8f0e47fd934f3eb393bf2e7f`         |
 
-> **安全提示**：生产环境中 AK/SK 应通过环境变量获取，禁止硬编码在代码中。
+> 说明：课设演示版采用固定内置值；生产环境中 AK/SK 应通过环境变量获取，禁止硬编码在代码中。
 
 ### 6.2 Base URL
 
@@ -247,4 +267,4 @@ https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com
 
 ---
 
-_文档版本：v1.2 | 更新日期：2025-12-13_
+_文档版本：v1.3 | 更新日期：2026-02-20_

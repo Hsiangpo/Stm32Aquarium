@@ -5,11 +5,7 @@
 #include "aquarium_sensors.h"
 #include "aquarium_storage.h"
 #include "board_pins.h"
-#if __has_include("secrets_local.h")
-#include "secrets_local.h"
-#else
 #include "secrets.h"
-#endif
 #include <stdio.h>
 #include <string.h>
 

@@ -1,9 +1,7 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
-import pasteboard from '@ohos.pasteboard';
 import { IOTDA_DEFAULTS } from '../config/iotdaDefaults';
 import { AppSettings, loadAppSettings, saveAppSettings } from '../utils/appSettings';
-import { getSessionSecrets, setSessionSecrets } from '../utils/sessionSecrets';
 import { UiConstants } from '../components/UiConstants';
 import { WarmBackground } from '../components/WarmBackground';
 import { GlassCard } from '../components/GlassCard';
@@ -36,21 +34,17 @@ struct Settings {
   }
 
   private applyHardcodedDefaults(): void {
-    if (!this.baseUrl.trim()) this.baseUrl = IOTDA_DEFAULTS.baseUrl;
-    if (!this.projectId.trim()) this.projectId = IOTDA_DEFAULTS.projectId;
-    if (!this.deviceId.trim()) this.deviceId = IOTDA_DEFAULTS.deviceId;
-    if (!this.ak.trim()) this.ak = IOTDA_DEFAULTS.ak;
-    if (!this.sk.trim()) this.sk = IOTDA_DEFAULTS.sk;
-    if (!this.deviceSecret.trim()) this.deviceSecret = IOTDA_DEFAULTS.deviceSecret;
+    this.baseUrl = IOTDA_DEFAULTS.baseUrl;
+    this.projectId = IOTDA_DEFAULTS.projectId;
+    this.deviceId = IOTDA_DEFAULTS.deviceId;
+    this.ak = IOTDA_DEFAULTS.ak;
+    this.sk = IOTDA_DEFAULTS.sk;
+    this.deviceSecret = IOTDA_DEFAULTS.deviceSecret;
   }
 
   private restore(): void {
     loadAppSettings()
       .then((saved) => {
-        if (saved.baseUrl) this.baseUrl = saved.baseUrl;
-        if (saved.projectId) this.projectId = saved.projectId;
-        if (saved.deviceId) this.deviceId = saved.deviceId;
-
         if (typeof saved.saveCredentials === 'boolean') this.saveCredentials = saved.saveCredentials;
         if (typeof saved.saveDeviceSecret === 'boolean') this.saveDeviceSecret = saved.saveDeviceSecret;
         if (typeof saved.autoRefreshEnabled === 'boolean') this.autoRefreshEnabled = saved.autoRefreshEnabled;
@@ -60,11 +54,6 @@ struct Settings {
         if (saved.ak) this.ak = saved.ak;
         if (saved.sk) this.sk = saved.sk;
         if (saved.deviceSecret) this.deviceSecret = saved.deviceSecret;
-
-        const session = getSessionSecrets();
-        if (!this.ak && session.ak) this.ak = session.ak;
-        if (!this.sk && session.sk) this.sk = session.sk;
-        if (!this.deviceSecret && session.deviceSecret) this.deviceSecret = session.deviceSecret;
         this.applyHardcodedDefaults();
 
         this.noticeText = '';
@@ -82,24 +71,6 @@ struct Settings {
       promptAction.showToast(opts);
     } catch {
       // ignore
-    }
-  }
-
-  private async pasteFromClipboard(onValue: (v: string) => void): Promise<void> {
-    try {
-      const systemPb = pasteboard.getSystemPasteboard();
-      const data = await systemPb.getPasteData();
-      const text = data?.getPrimaryText?.();
-      if (typeof text !== 'string' || !text.trim()) {
-        await this.toast('剪贴板为空');
-        return;
-      }
-      onValue(text.trim());
-      await this.toast('已粘贴');
-    } catch (e) {
-      this.noticeText = e?.message ?? String(e);
-      this.noticeIsError = true;
-      await this.toast('粘贴失败');
     }
   }
 
@@ -126,11 +97,6 @@ struct Settings {
         deviceSecret: this.deviceSecret,
       };
 
-      setSessionSecrets({
-        ak: settings.ak,
-        sk: settings.sk,
-        deviceSecret: settings.deviceSecret,
-      });
       await saveAppSettings(settings);
       await this.toast('已保存');
       router.back();
@@ -168,75 +134,6 @@ struct Settings {
     .margin({ top: 16, bottom: 8 })
     .width('100%')
     .alignItems(VerticalAlign.Center);
-  }
-
-  @Builder
-  private TextInputRow(label: string, value: string, placeholder: string, onChange: (v: string) => void) {
-    Column({ space: 8 }) {
-      Text(label)
-        .fontSize(14)
-        .fontColor('#333333')
-        .fontWeight(FontWeight.Medium);
-      TextInput({ text: value, placeholder })
-        .onChange(onChange)
-        .height(48)
-        .backgroundColor('#F5F7FA')
-        .borderRadius(12)
-        .padding({ left: 16, right: 16 })
-        .width('100%');
-    }
-    .width('100%')
-    .padding({ top: 8, bottom: 8 });
-  }
-
-  @Builder
-  private PasswordInputRow(label: string, value: string, placeholder: string, onChange: (v: string) => void) {
-    Column({ space: 8 }) {
-      Text(label)
-        .fontSize(14)
-        .fontColor('#333333')
-        .fontWeight(FontWeight.Medium);
-      TextInput({ text: value, placeholder })
-        .type(InputType.Password)
-        .onChange(onChange)
-        .height(48)
-        .backgroundColor('#F5F7FA')
-        .borderRadius(12)
-        .padding({ left: 16, right: 16 })
-        .width('100%');
-    }
-    .width('100%')
-    .padding({ top: 8, bottom: 8 });
-  }
-
-  @Builder
-  private InputRowWithPaste(label: string, value: string, placeholder: string, onChange: (v: string) => void, onPaste: () => void, isPassword: boolean = false) {
-    Column({ space: 8 }) {
-      Text(label)
-        .fontSize(14)
-        .fontColor('#333333')
-        .fontWeight(FontWeight.Medium);
-      Row({ space: 8 }) {
-        TextInput({ text: value, placeholder })
-          .type(isPassword ? InputType.Password : InputType.Normal)
-          .onChange(onChange)
-          .height(48)
-          .backgroundColor('#F5F7FA')
-          .borderRadius(12)
-          .padding({ left: 16, right: 16 })
-          .layoutWeight(1);
-        Text('粘贴')
-          .fontSize(12)
-          .fontColor('#FFFFFF')
-          .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-          .backgroundColor(UiConstants.COLOR_PRIMARY)
-          .borderRadius(12)
-          .onClick(onPaste);
-      }
-      .alignItems(VerticalAlign.Center)
-    }
-    .width('100%')
-    .padding({ top: 8, bottom: 8 });
   }
 
   @Builder
@@ -306,37 +203,12 @@ struct Settings {
           Column({ space: 16 }) {
             GlassCard() {
               Column({ space: 8 }) {
-                this.SectionTitle('云端连接 (IoTDA App Endpoint)')
-                this.TextInputRow('Base URL', this.baseUrl, 'https://{app_endpoint}', (v) => (this.baseUrl = v))
-                this.TextInputRow('Project ID', this.projectId, '例如 79d1f7...', (v) => (this.projectId = v))
-                this.TextInputRow('Device ID', this.deviceId, '例如 690237...', (v) => (this.deviceId = v))
-
-                Text('AK/SK 默认不落盘；开启“本机保存”仅用于调试。')
+                this.SectionTitle('连接参数')
+                Text('演示模式：华为云区域/端点/设备ID/密钥均为内置固定值，前端不提供配置入口。')
                   .fontSize(12)
                   .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
-                  .margin({ top: 8 })
-
-                this.InputRowWithPaste('Access Key (AK)', this.ak, '不要提交到仓库', (v) => (this.ak = v), () => {
-                  this.pasteFromClipboard((text) => (this.ak = text));
-                })
-                this.InputRowWithPaste('Secret Key (SK)', this.sk, '不要提交到仓库', (v) => (this.sk = v), () => {
-                  this.pasteFromClipboard((text) => (this.sk = text));
-                }, true)
-                this.ToggleRow('本机保存 AK/SK', this.saveCredentials, (v) => (this.saveCredentials = v))
-              }
-            }
-
-            GlassCard() {
-              Column({ space: 8 }) {
-                this.SectionTitle('实时订阅 (MQTT)')
-                Text(`Endpoint: ${IOTDA_DEFAULTS.deviceMqttHost}:${IOTDA_DEFAULTS.deviceMqttPort}`)
-                  .fontSize(13)
-                  .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
                   .width('100%')
-                  .margin({ bottom: 8 })
-
-                this.PasswordInputRow('Device Secret', this.deviceSecret, '设备密钥（默认不落盘）', (v) => (this.deviceSecret = v))
-                this.ToggleRow('本机保存 Device Secret', this.saveDeviceSecret, (v) => (this.saveDeviceSecret = v))
+                  .lineHeight(20)
               }
             }
 
