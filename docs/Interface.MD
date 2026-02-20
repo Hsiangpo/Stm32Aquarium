@@ -98,7 +98,7 @@ $oc/devices/{device_id}/sys/commands/request_id={request_id}
 ```
 
 > 说明：`feed_once_delay` 单位为秒，表示一次性投喂倒计时（建议范围 1~86400）。  
-> 云端当前产品模型（2026-02-20）中 `feed` 为 `string` 且未配置 `feed_once_delay`；若按本文接口联调，请先在 IoTDA 产品模型中同步字段类型与参数。
+> 云端产品模型已于 2026-02-20 对齐：`feed:boolean`，并已配置 `feed_once_delay:int`。
 
 #### 1.3.2 set_thresholds 命令
 
@@ -457,4 +457,4 @@ export async function buildAuthorization(params: {
 
 ---
 
-_文档版本：v1.2 | 更新日期：2026-02-20_
+_文档版本：v1.3 | 更新日期：2026-02-20_

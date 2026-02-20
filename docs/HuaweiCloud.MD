@@ -201,11 +201,12 @@ password  = HMACSHA256("<device_secret>", "2025121312")
 | `ph_offset`     | decimal  | pH 校准偏移量 |
 | `tds_factor`    | decimal  | TDS 校准系数  |
 
-### 4.5 当前云端模型与代码差异（2026-02-20）
+### 4.5 云端模型对齐状态（2026-02-20）
 
-- 云端 `aquarium_control.control` 中 `feed` 为 `string`，且未定义 `feed_once_delay`。
-- 当前固件/应用实现中 `feed` 按 `bool` 解析，并支持 `feed_once_delay`（预约一次投喂）。
-- 如需完整演示“预约一次投喂”，建议在 IoTDA 产品模型中将 `feed` 改为 `bool`，并补充 `feed_once_delay:int`。
+- 已完成 `aquarium_control.control` 参数对齐：
+- `feed`：`boolean`
+- `feed_once_delay`：`int`（范围 `1~86400`，步长 `1`，单位 `s`）
+- 当前固件/应用与云端模型一致，可直接演示“预约一次投喂”。
 
 ---
 
@@ -267,4 +268,4 @@ https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com
 
 ---
 
-_文档版本：v1.3 | 更新日期：2026-02-20_
+_文档版本：v1.4 | 更新日期：2026-02-20_
