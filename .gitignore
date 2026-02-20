@@ -1,3 +1,6 @@
+# ===== Excluded project =====
+PetHome_APP/
+
 # ===== PlatformIO (STM32 Device) =====
 **/.pio/
 **/.piolibdeps/
