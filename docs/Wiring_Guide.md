@@ -54,6 +54,40 @@
 - 扎带或粘扣带（整理线材）；
 - 绝缘胶带或热缩管（防止短路）。
 
+### 当前购物车采购链接（2026-02-20）
+
+说明：
+- 该清单来自当前淘宝购物车（共 24 条）。
+- 硅胶软管按当前决策保留 1 份（2 米）。
+- 12V 供电采用锂电池组（带充电器）方案。
+
+| 序号 | 商品 | 规格 | 数量 | 链接 |
+|---|---|---|---:|---|
+| 1 | 彩色杜邦线40P 公对公/母对母/公对母10/20/30cm连接线面包板线 | 20cm公对公 | 1 | https://item.taobao.com/item.htm?id=693216069245 |
+| 2 | 彩色杜邦线40P 公对公/母对母/公对母10/20/30cm连接线面包板线 | 20cm公对母 | 1 | https://item.taobao.com/item.htm?id=693216069245 |
+| 3 | 彩色杜邦线40P 公对公/母对母/公对母10/20/30cm连接线面包板线 | 20cm母对母 | 1 | https://item.taobao.com/item.htm?id=693216069245 |
+| 4 | 12V锂电池组大容量氙气灯diy智能小车太阳能路灯户外电源12伏电瓶 | 12V【2200mAh】DC公母[头配1A充电器] | 1 | https://item.taobao.com/item.htm?id=562015429673 |
+| 5 | 直流5V12V24V36V48V 60V防水加热管电热棒 潜水加热管 机油加热棒 | 防水12V/6W | 1 | https://item.taobao.com/item.htm?id=524519364659 |
+| 6 | pH不可充式电极探头 PH值测试 采集酸碱度传感器 监测模块ph0-14 | 单PH测试模块+不可充式电极探头(黑色） | 1 | https://item.taobao.com/item.htm?id=648937675220 |
+| 7 | MB-102多路电压供电模块面包板实验套件diy电路板Type-C接口 | 【课设专用✅】MB-102电源板 | 1 | https://item.taobao.com/item.htm?id=994550991077 |
+| 8 | TS-300B浊度模块水浑浊度污水水质检测模块浊度传感器模块 送程序 | 浊度传感器探头 | 1 | https://item.taobao.com/item.htm?id=682531973052 |
+| 9 | NUCLEO-F103RB STM32F103RBT6 微控制器 STM32 Nucleo-64开发板 | NUCLEO-F103RB | 1 | https://item.taobao.com/item.htm?id=824002574639 |
+| 10 | MicroPython ESP32开发板 V1.0.0 Rev1 wifi蓝牙4MB FLASH AT固件 | TYPE-C接口 | 1 | https://item.taobao.com/item.htm?id=639571021036 |
+| 11 | DS18B20数字温度传感器探头 不锈钢封装防水型 水温探测温线 1米 | - | 1 | https://item.taobao.com/item.htm?id=558329645868 |
+| 12 | 有源蜂鸣器模块高电平触发电压3.3 5V控制板传感器固定螺纹孔安装 | 蜂鸣器【多仓发货 大部分区域次日达】 | 1 | https://item.taobao.com/item.htm?id=685069687955 |
+| 13 | 1/2/4/8路3V5V12V24V继电器模块一两四八路光耦隔离高低电平触发 | 3路5V汇科继电器 高电平3.3V-7V触发 | 1 | https://item.taobao.com/item.htm?id=608030089274 |
+| 14 | 硅胶软管食品级耐高温透明高弹性硅橡胶抽水管内径12345 6 7 8 9 | 内径6mm×外径10mm（2米） | 1 | https://item.taobao.com/item.htm?id=612367961659 |
+| 15 | 2.1*5.5mmDC接线端子插座 2.1mm母插12V低压电源头DC端子插头插座 | 2.1DC母插 | 1 | https://item.taobao.com/item.htm?id=558259675227 |
+| 16 | TDS传感器模块/模拟信号水质检测源代码/探针stm32模块水质传感器 | TDS模块+TDS探针 | 1 | https://item.taobao.com/item.htm?id=644220334693 |
+| 17 | DC-DC降压转换电源模块 4.8～40V转3/3.3v/3.7/5v/6/7.5/9/12V 1A | 3.3V输出 | 1 | https://item.taobao.com/item.htm?id=960198957083 |
+| 18 | 原装正品 5MM/F5直插圆头LED灯珠红发红 红色发光二极管长脚 10只 | - | 1 | https://item.taobao.com/item.htm?id=544529384981 |
+| 19 | OLED显示屏模块 0.96寸 IIC I2C接口 兼容UNO 液晶串口屏V | 白色 | 1 | https://item.taobao.com/item.htm?id=571173712417 |
+| 20 | 3-5V水位传感器模块 电子雨滴液体水深识别检测感应开关控制器板 | 水位传感器模块 | 1 | https://item.taobao.com/item.htm?id=654013848048 |
+| 21 | LM2596S DC直流可调降压板模块 带数显电压表显示12V 24V转5V 3A | 蓝板 LM2596S可调降压模块 | 1 | https://item.taobao.com/item.htm?id=662885799973 |
+| 22 | 1/4W(0.25瓦) 10欧-1M金属膜电阻包 30种各20个共600个 五色环1% | 1/4W 10欧-1M金属膜电阻包 | 1 | https://item.taobao.com/item.htm?id=43943563249 |
+| 23 | 385耐高温水泵100度小型微型抽冷却循环水泵水族隔膜泵DC12V长寿 | D12V【耐温100℃】385型 | 2 | https://item.taobao.com/item.htm?id=992978530388 |
+| 24 | SG90 9G经典舵机 180/360度 数字舵机云台遥控飞机马达固定翼航 | 180度 | 1 | https://item.taobao.com/item.htm?id=895293322701 |
+
 ## 2. 接线总览
 
 下表给出每个传感器/执行器与 NUCLEO 板的连接关系。STM32 引脚采用板卡丝印（例如 D2、A0），便于对应杜邦线。
