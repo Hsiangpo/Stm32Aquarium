@@ -1,7 +1,6 @@
 export interface PendingWantParams {
-  baseUrl?: string;
-  projectId?: string;
-  deviceId?: string;
+  autoRefreshEnabled?: boolean;
+  alarmNotifyEnabled?: boolean;
 }
 
 export class GlobalContext {

@@ -74,10 +74,18 @@ extern "C" {
  * 水位传感器：
  * - 典型模块为电阻式或电容式，输出电压与水位正相关
  * - 公式：level = (voltage - V_MIN) / (V_MAX - V_MIN) * 100%
- * - V_MIN 为空时电压（约 0.5V），V_MAX 为满时电压（约 3.0V）
+ * - 现场标定（当前硬件）：V_MIN 约 0.0V，V_MAX 约 1.35V
+ *   说明：按实测离水 A3≈0、满浸 A3≈1600~1800（约 1.29~1.45V）设定。
+ *   若后续更换模块，可按实测值调整 V_MIN/V_MAX。
+ * - 非线性校正：该批次电阻式探头在“浸入中段”响应偏快，固件在 raw=80%
+ *   附近做分段线性压缩，使显示更接近真实浸入高度。
  */
-#define WATER_LEVEL_V_MIN 0.5f /* 空时电压 V */
-#define WATER_LEVEL_V_MAX 3.0f /* 满时电压 V */
+#define WATER_LEVEL_V_MIN 0.0f  /* 空时电压 V（现场标定值） */
+#define WATER_LEVEL_V_MAX 1.35f /* 满时电压 V（现场标定值） */
+
+/* 水位非线性校正锚点（raw 百分比 -> 目标百分比） */
+#define WATER_LEVEL_RAW_MID 80.0f
+#define WATER_LEVEL_TRUE_MID 50.0f
 
 /* ============================================================================
  * 范围限制（物理量约束）

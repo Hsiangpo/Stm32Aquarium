@@ -10,6 +10,7 @@
 - `docs/Interface.MD`：设备侧 MQTT & 应用侧 REST 接口
 - `docs/TECH.MD`：实现细节与开发环境说明
 - `docs/Wiring_Guide.md`：接线与物料建议
+- `docs/Field_Integration_Log.md`：实物联调进度、当前接线状态与异常台账
 
 ## 快速开始（固件）
 
@@ -20,7 +21,7 @@
 
 首次烧录成功后，板载 LED（PA5/LD2）会闪烁用于验证工程可运行。
 
-> 注意：`PB4` 默认是 JTAG `TRST`，固件已禁用 JTAG（保留 SWD）。如使用 `USART2 (PA2/PA3)` 连接 ESP32，需避免与 ST-LINK VCP 冲突（详见 `docs/TECH.MD`）。
+> 注意：`PB4` 默认是 JTAG `TRST`，固件已禁用 JTAG（保留 SWD）。当前 ESP32 AT 使用 `USART1 (PA9/PA10)`，不占用 `PA2/PA3` 的 ST-LINK VCP（详见 `docs/TECH.MD`）。
 
 ## 快速开始（App：HarmonyOS 5.0.5 / API 17）
 

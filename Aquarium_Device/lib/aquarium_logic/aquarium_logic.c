@@ -6,6 +6,28 @@
 #include "aquarium_logic.h"
 #include <string.h>
 
+/* Firmware-side command boundary validation (defense in depth). */
+#define TEMP_PHYS_MIN (-55.0f)
+#define TEMP_PHYS_MAX (125.0f)
+#define PH_PHYS_MIN (0.0f)
+#define PH_PHYS_MAX (14.0f)
+#define TDS_PHYS_MIN (0)
+#define TDS_PHYS_MAX (5000)
+#define TURBIDITY_PHYS_MIN (0)
+#define TURBIDITY_PHYS_MAX (3000)
+#define LEVEL_PHYS_MIN (0)
+#define LEVEL_PHYS_MAX (100)
+#define FEED_INTERVAL_MIN (1)
+#define FEED_INTERVAL_MAX (168)
+#define FEED_AMOUNT_MIN (1)
+#define FEED_AMOUNT_MAX (10)
+#define PH_OFFSET_MIN (-5.0f)
+#define PH_OFFSET_MAX (5.0f)
+#define TDS_FACTOR_MIN (0.1f)
+#define TDS_FACTOR_MAX (10.0f)
+#define TARGET_TEMP_MIN (0.0f)
+#define TARGET_TEMP_MAX (40.0f)
+
 /* 静态函数前向声明 */
 static AquaError aqua_logic_apply_control(AquariumState *state,
                                           const ControlCommandParams *p);
@@ -13,8 +35,23 @@ static AquaError aqua_logic_apply_threshold(AquariumState *state,
                                             const ThresholdCommandParams *p);
 static AquaError aqua_logic_apply_config(AquariumState *state,
                                          const ConfigCommandParams *p);
+static AquaError aqua_logic_validate_threshold_update(
+    const AquariumState *state, const ThresholdCommandParams *p);
+static AquaError aqua_logic_validate_config_update(const ConfigCommandParams *p);
 static int32_t aqua_logic_dec_timer(int32_t timer, uint32_t elapsed_seconds);
 static int32_t aqua_logic_next_feed_countdown(const AquariumState *state);
+
+static bool aqua_logic_is_finitef(float v) {
+  return (v == v) && ((v - v) == 0.0f);
+}
+
+static bool aqua_logic_in_rangef(float v, float min, float max) {
+  return aqua_logic_is_finitef(v) && v >= min && v <= max;
+}
+
+static bool aqua_logic_in_rangei(int32_t v, int32_t min, int32_t max) {
+  return v >= min && v <= max;
+}
 
 /* ============================================================================
  * 初始化
@@ -94,6 +131,10 @@ static AquaError aqua_logic_apply_control(AquariumState *state,
       return AQUA_ERR_INVALID_COMMAND;
     }
   }
+  if (p->has_target_temp &&
+      !aqua_logic_in_rangef(p->target_temp, TARGET_TEMP_MIN, TARGET_TEMP_MAX)) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
   if (p->has_heater) {
     state->props.heater = p->heater;
   }
@@ -129,6 +170,11 @@ static AquaError aqua_logic_apply_control(AquariumState *state,
 /* 应用 threshold 命令 */
 static AquaError aqua_logic_apply_threshold(AquariumState *state,
                                             const ThresholdCommandParams *p) {
+  AquaError valid_err = aqua_logic_validate_threshold_update(state, p);
+  if (valid_err != AQUA_OK) {
+    return valid_err;
+  }
+
   if (p->has_temp_min)
     state->thresholds.temp_min = p->temp_min;
   if (p->has_temp_max)
@@ -159,12 +205,20 @@ static AquaError aqua_logic_apply_threshold(AquariumState *state,
   if (p->has_feed_amount) {
     state->thresholds.feed_amount = p->feed_amount;
   }
+  if (p->has_target_temp) {
+    state->target_temp = p->target_temp;
+  }
   return AQUA_OK;
 }
 
 /* 应用 config 命令 */
 static AquaError aqua_logic_apply_config(AquariumState *state,
                                          const ConfigCommandParams *p) {
+  AquaError valid_err = aqua_logic_validate_config_update(p);
+  if (valid_err != AQUA_OK) {
+    return valid_err;
+  }
+
   bool changed = false;
 
   if (p->has_wifi_ssid) {
@@ -190,6 +244,119 @@ static AquaError aqua_logic_apply_config(AquariumState *state,
   if (changed) {
     state->config_dirty = true;
   }
+  return AQUA_OK;
+}
+
+static AquaError aqua_logic_validate_threshold_update(
+    const AquariumState *state, const ThresholdCommandParams *p) {
+  if (!state || !p) {
+    return AQUA_ERR_NULL_PTR;
+  }
+
+  ThresholdConfig next = state->thresholds;
+
+  if (p->has_temp_min)
+    next.temp_min = p->temp_min;
+  if (p->has_temp_max)
+    next.temp_max = p->temp_max;
+  if (p->has_ph_min)
+    next.ph_min = p->ph_min;
+  if (p->has_ph_max)
+    next.ph_max = p->ph_max;
+  if (p->has_tds_warn)
+    next.tds_warn = p->tds_warn;
+  if (p->has_tds_critical)
+    next.tds_critical = p->tds_critical;
+  if (p->has_turbidity_warn)
+    next.turbidity_warn = p->turbidity_warn;
+  if (p->has_turbidity_critical)
+    next.turbidity_critical = p->turbidity_critical;
+  if (p->has_level_min)
+    next.level_min = p->level_min;
+  if (p->has_level_max)
+    next.level_max = p->level_max;
+  if (p->has_feed_interval)
+    next.feed_interval = p->feed_interval;
+  if (p->has_feed_amount)
+    next.feed_amount = p->feed_amount;
+
+  float next_target_temp = state->target_temp;
+  if (p->has_target_temp) {
+    next_target_temp = p->target_temp;
+  }
+
+  if (!aqua_logic_in_rangef(next.temp_min, TEMP_PHYS_MIN, TEMP_PHYS_MAX) ||
+      !aqua_logic_in_rangef(next.temp_max, TEMP_PHYS_MIN, TEMP_PHYS_MAX) ||
+      next.temp_min >= next.temp_max) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (!aqua_logic_in_rangef(next.ph_min, PH_PHYS_MIN, PH_PHYS_MAX) ||
+      !aqua_logic_in_rangef(next.ph_max, PH_PHYS_MIN, PH_PHYS_MAX) ||
+      next.ph_min >= next.ph_max) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (!aqua_logic_in_rangei(next.tds_warn, TDS_PHYS_MIN, TDS_PHYS_MAX) ||
+      !aqua_logic_in_rangei(next.tds_critical, TDS_PHYS_MIN, TDS_PHYS_MAX) ||
+      next.tds_warn >= next.tds_critical) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (!aqua_logic_in_rangei(next.turbidity_warn, TURBIDITY_PHYS_MIN,
+                            TURBIDITY_PHYS_MAX) ||
+      !aqua_logic_in_rangei(next.turbidity_critical, TURBIDITY_PHYS_MIN,
+                            TURBIDITY_PHYS_MAX) ||
+      next.turbidity_warn >= next.turbidity_critical) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (!aqua_logic_in_rangei(next.level_min, LEVEL_PHYS_MIN, LEVEL_PHYS_MAX) ||
+      !aqua_logic_in_rangei(next.level_max, LEVEL_PHYS_MIN, LEVEL_PHYS_MAX) ||
+      next.level_min >= next.level_max) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (!aqua_logic_in_rangei(next.feed_interval, FEED_INTERVAL_MIN,
+                            FEED_INTERVAL_MAX) ||
+      !aqua_logic_in_rangei(next.feed_amount, FEED_AMOUNT_MIN,
+                            FEED_AMOUNT_MAX)) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (!aqua_logic_in_rangef(next_target_temp, TARGET_TEMP_MIN,
+                            TARGET_TEMP_MAX)) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  return AQUA_OK;
+}
+
+static AquaError aqua_logic_validate_config_update(const ConfigCommandParams *p) {
+  if (!p) {
+    return AQUA_ERR_NULL_PTR;
+  }
+
+  if (p->has_wifi_ssid != p->has_wifi_password) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (p->has_wifi_ssid && p->has_wifi_password) {
+    if (p->wifi_ssid[0] == '\0' || p->wifi_password[0] == '\0') {
+      return AQUA_ERR_INVALID_COMMAND;
+    }
+  }
+
+  if (p->has_ph_offset &&
+      !aqua_logic_in_rangef(p->ph_offset, PH_OFFSET_MIN, PH_OFFSET_MAX)) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
+  if (p->has_tds_factor &&
+      !aqua_logic_in_rangef(p->tds_factor, TDS_FACTOR_MIN, TDS_FACTOR_MAX)) {
+    return AQUA_ERR_INVALID_COMMAND;
+  }
+
   return AQUA_OK;
 }
 

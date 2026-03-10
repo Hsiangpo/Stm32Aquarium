@@ -35,7 +35,7 @@
 
 - `PB4` 默认是 JTAG 的 `TRST` 引脚；**不禁用 JTAG 会导致继电器 IN2（PB4）不可用**。
 - 固件已在 `main.c` 中通过 `__HAL_AFIO_REMAP_SWJ_NOJTAG()` 禁用 JTAG（保留 SWD 调试）。
-- ESP32 AT 使用 `USART2 (PA2/PA3)`，需断开 ST-LINK VCP 连接避免总线冲突。
+- ESP32 AT 使用 `USART1 (PA9/PA10)`，避免了 `USART2 (PA2/PA3)` 与 ST-LINK VCP 冲突。
 
 ---
 
@@ -65,8 +65,8 @@
 | 舵机 PWM                | PC7 (TIM3_CH2)     |
 | 继电器                  | PB5/PB4/PB10       |
 | DS18B20 温度            | PA8                |
-| ESP32 AT                | PA2(TX), PA3(RX)   |
-| 蜂鸣器/LED              | PA9/PA5            |
+| ESP32 AT                | PA9(TX1), PA10(RX1) |
+| 蜂鸣器/LED              | PC2/PA5            |
 
 ---
 
@@ -74,7 +74,7 @@
 
 WiFi 连接成功后自动通过 SNTP 获取网络时间，用于 IoTDA MQTT 鉴权。
 
-1. 配置 SNTP：`AT+CIPSNTPCFG=1,0,"ntp.aliyun.com"`
+1. 配置 SNTP：`AT+CIPSNTPCFG=1,0,"ntp.aliyun.com","ntp.ntsc.ac.cn","time.cloudflare.com"`
 2. 查询时间：`AT+CIPSNTPTIME?`
 3. 转换为 `YYYYMMDDHH` 格式用于签名
 
@@ -91,7 +91,7 @@ WiFi 连接成功后自动通过 SNTP 获取网络时间，用于 IoTDA MQTT 鉴
 ## 6. AP 配网 + 自动重连
 
 - WiFi 连接失败 ≥3 次时，自动进入 AP 配网模式
-- AP SSID: `Aquarium_Setup`，密码随机生成（显示在 OLED/串口）
+- AP SSID: `Aquarium_Setup`，密码固定 `12345678`（显示在 OLED/串口）
 - HTTP 端点：`GET /config?ssid=XXX&pwd=YYY`
 
 ---

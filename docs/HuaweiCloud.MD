@@ -39,8 +39,8 @@
 | App Base URL | `https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com` |
 | Project ID | `79d1f76b8f0e47fd934f3eb393bf2e7f` |
 | Device ID | `690237639798273cc4fd09cb_MyAquarium_01` |
-| AK | `HPUA4JX3YFP88FSKLZ8N` |
-| SK | `vZ2ggGBLX6ekyeZWDxopQM9J5DXmMSbUI5JNfgDg` |
+| AK | `HPUAXBOD7O94OFVQKNST` |
+| SK | `ai2ept3hXzrYJF8eifMBCQ9udBli9K8X5lL3dSCY` |
 | Device Secret | `z748464wo946` |
 | Device MQTT Host | `8cee850016.st1.iotda-device.cn-north-4.myhuaweicloud.com` |
 | Device MQTT Port | `1883` |
@@ -154,7 +154,7 @@ password  = HMACSHA256("<device_secret>", "2025121312")
 | `pump_out`    | bool     | 开启/关闭排水泵   |
 | `mute`        | bool     | 静音告警          |
 | `auto_mode`   | bool     | 切换自动/手动模式 |
-| `feed`        | string   | 立即投喂一次（云端当前模型） |
+| `feed`        | boolean  | 立即投喂一次（云端当前模型） |
 | `target_temp` | float    | 目标温度 ℃        |
 
 ---
@@ -206,6 +206,7 @@ password  = HMACSHA256("<device_secret>", "2025121312")
 - 已完成 `aquarium_control.control` 参数对齐：
 - `feed`：`boolean`
 - `feed_once_delay`：`int`（范围 `1~86400`，步长 `1`，单位 `s`）
+- `feed_amount`：`string`（云端模型现状；固件兼容 `int/string`）
 - 当前固件/应用与云端模型一致，可直接演示“预约一次投喂”。
 
 ---
@@ -240,14 +241,14 @@ Topic: $oc/devices/{device_id}/sys/commands/response/request_id={request_id}
 
 ## 6. 应用侧 API 凭证
 
-> 说明：IoTDA REST API 使用华为云 AK/SK 签名认证（常被称为 V11），Authorization 算法标识为 `SDK-HMAC-SHA256`。签名示例见 `docs/Interface.MD` 的“AK/SK 签名”章节。
+> 说明：IoTDA REST API 使用华为云 AK/SK 签名认证（V11），Authorization 算法标识为 `V11-HMAC-SHA256`，并需携带 `Instance-Id` 请求头。签名示例见 `docs/Interface.MD` 的“AK/SK 签名”章节。
 
 ### 6.1 AK/SK 凭证
 
 | 配置项          | 值                                         |
 | --------------- | ------------------------------------------ |
-| Access Key (AK) | `HPUA4JX3YFP88FSKLZ8N`                     |
-| Secret Key (SK) | `vZ2ggGBLX6ekyeZWDxopQM9J5DXmMSbUI5JNfgDg` |
+| Access Key (AK) | `HPUAXBOD7O94OFVQKNST`                     |
+| Secret Key (SK) | `ai2ept3hXzrYJF8eifMBCQ9udBli9K8X5lL3dSCY` |
 | Project ID      | `79d1f76b8f0e47fd934f3eb393bf2e7f`         |
 
 > 说明：课设演示版采用固定内置值；生产环境中 AK/SK 应通过环境变量获取，禁止硬编码在代码中。

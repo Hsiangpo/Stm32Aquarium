@@ -158,7 +158,7 @@ void test_handle_config_command_success(void) {
       "{"
       "\"service_id\":\"aquariumConfig\","
       "\"command_name\":\"set_config\","
-      "\"paras\":{\"wifi_ssid\":\"TestSSID\",\"ph_offset\":0.25}"
+      "\"paras\":{\"wifi_ssid\":\"TestSSID\",\"wifi_password\":\"TestPass123\",\"ph_offset\":0.25}"
       "}";
 
   IoTDACommandResult result;
@@ -174,6 +174,7 @@ void test_handle_config_command_success(void) {
 
   /* 验证状态已更新 */
   TEST_ASSERT_EQUAL_STRING("TestSSID", state.config.wifi_ssid);
+  TEST_ASSERT_EQUAL_STRING("TestPass123", state.config.wifi_password);
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.25f, state.config.ph_offset);
 }
 

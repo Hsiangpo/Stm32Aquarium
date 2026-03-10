@@ -117,6 +117,7 @@ typedef struct {
   int32_t level_max;          /* 水位上限 % */
   int32_t feed_interval;      /* 自动投喂间隔（小时） */
   int32_t feed_amount;        /* 投喂量（档位） */
+  float target_temp;          /* 目标温度 ℃（兼容旧云模型） */
 
   /* 字段存在标志（用于部分更新） */
   bool has_temp_min;
@@ -131,6 +132,7 @@ typedef struct {
   bool has_level_max;
   bool has_feed_interval;
   bool has_feed_amount;
+  bool has_target_temp;
 } ThresholdCommandParams;
 
 /* ============================================================================

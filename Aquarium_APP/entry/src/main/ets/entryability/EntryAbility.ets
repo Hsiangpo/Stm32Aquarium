@@ -5,15 +5,19 @@ import { GlobalContext, PendingWantParams } from '../utils/globalContext';
 
 const DOMAIN = 0x0000;
 
+interface AbilityLaunchParams {
+  autoRefreshEnabled?: boolean;
+  alarmNotifyEnabled?: boolean;
+}
+
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     GlobalContext.setAppContext(this.context);
     try {
-      const p = (want.parameters as Record<string, Object> | undefined) ?? undefined;
+      const p = (want.parameters as AbilityLaunchParams | undefined) ?? undefined;
       const params: PendingWantParams = {
-        baseUrl: typeof p?.baseUrl === 'string' ? (p.baseUrl as string) : undefined,
-        projectId: typeof p?.projectId === 'string' ? (p.projectId as string) : undefined,
-        deviceId: typeof p?.deviceId === 'string' ? (p.deviceId as string) : undefined,
+        autoRefreshEnabled: typeof p?.autoRefreshEnabled === 'boolean' ? (p.autoRefreshEnabled as boolean) : undefined,
+        alarmNotifyEnabled: typeof p?.alarmNotifyEnabled === 'boolean' ? (p.alarmNotifyEnabled as boolean) : undefined,
       };
       GlobalContext.setPendingWantParams(params);
     } catch {

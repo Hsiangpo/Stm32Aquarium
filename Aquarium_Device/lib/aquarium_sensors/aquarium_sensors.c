@@ -119,14 +119,40 @@ float aqua_sensor_water_level_from_voltage(float voltage) {
    * - 电阻式/电容式传感器，电压与水位正相关
    * - 公式：level = (voltage - V_MIN) / (V_MAX - V_MIN) * 100
    *
-   * V_MIN = 0.5V（空）, V_MAX = 3.0V（满）
+   * 当前现场标定：
+   * V_MIN = 0.0V（空）, V_MAX = 1.35V（满）
+   *
+   * 另外对该批次探头做分段线性校正：
+   * - raw=80% -> true=50%
+   * - raw=100% -> true=100%
    */
   float range = WATER_LEVEL_V_MAX - WATER_LEVEL_V_MIN;
   if (range <= 0.0f) {
     return 0.0f;
   }
 
-  float level = (voltage - WATER_LEVEL_V_MIN) / range * 100.0f;
+  float raw_level = (voltage - WATER_LEVEL_V_MIN) / range * 100.0f;
+  raw_level = aqua_sensor_clamp(raw_level, WATER_LEVEL_MIN, WATER_LEVEL_MAX);
+
+  float level = 0.0f;
+  if (raw_level <= WATER_LEVEL_RAW_MID) {
+    /* [0, raw_mid] -> [0, true_mid] */
+    if (WATER_LEVEL_RAW_MID <= 0.0f) {
+      level = 0.0f;
+    } else {
+      level = raw_level * (WATER_LEVEL_TRUE_MID / WATER_LEVEL_RAW_MID);
+    }
+  } else {
+    /* [raw_mid, 100] -> [true_mid, 100] */
+    float raw_tail = 100.0f - WATER_LEVEL_RAW_MID;
+    float true_tail = 100.0f - WATER_LEVEL_TRUE_MID;
+    if (raw_tail <= 0.0f) {
+      level = 100.0f;
+    } else {
+      level = WATER_LEVEL_TRUE_MID +
+              (raw_level - WATER_LEVEL_RAW_MID) * (true_tail / raw_tail);
+    }
+  }
 
   /* Clamp 到有效范围 */
   return aqua_sensor_clamp(level, WATER_LEVEL_MIN, WATER_LEVEL_MAX);

@@ -1,6 +1,6 @@
 /**
  * @file aquarium_esp32_mqtt.c
- * @brief ESP32 AT WiFi/MQTT 鑱旈€氬眰瀹炵幇
+ * @brief ESP32 AT WiFi/MQTT 
  */
 
 #include "aquarium_esp32_mqtt.h"
@@ -10,27 +10,128 @@
 #include <string.h>
 
 /* ============================================================================
- * 鍐呴儴甯搁噺
+ * 
  * ============================================================================
  */
 
 #define AT_TIMEOUT_SHORT 2000
-#define AT_TIMEOUT_WIFI 15000
+#define AT_TIMEOUT_WIFI 35000
 #define AT_TIMEOUT_MQTT 10000
-#define PUB_DATA_TIMEOUT_MS 5000 /* +MQTTPUB:OK 绛夊緟瓒呮椂 */
-#define AT_TIMEOUT_SNTP 5000     /* SNTP 鍛戒护瓒呮椂 */
+#define PUB_DATA_TIMEOUT_MS 15000 /* +MQTTPUB:OK */
+#define AT_TIMEOUT_SNTP 5000 /* SNTP */
+#define SNTP_QUERY_MAX_RETRY 3
 
-/* AP 閰嶇綉鐩稿叧甯搁噺 */
+/* AP */
 #define AP_SSID_DEFAULT "Aquarium_Setup"
 #define AP_PASSWORD_DEFAULT "12345678"
 #define AP_SERVER_PORT 80
 
-/* 鏈堜唤缂╁啓鏄犲皠琛?*/
+/* */
 static const char *MONTH_NAMES[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
+static void at_escape_string(const char *src, char *dst, size_t dst_size) {
+  size_t j = 0;
+  if (!dst || dst_size == 0) {
+    return;
+  }
+  if (!src) {
+    dst[0] = '\0';
+    return;
+  }
+
+  for (size_t i = 0; src[i] != '\0' && j + 1 < dst_size; ++i) {
+    char ch = src[i];
+
+    if (ch == '\r' || ch == '\n') {
+      continue;
+    }
+
+    if ((ch == '\\' || ch == '"') && j + 2 < dst_size) {
+      dst[j++] = '\\';
+      dst[j++] = ch;
+      continue;
+    }
+
+    dst[j++] = ch;
+  }
+  dst[j] = '\0';
+}
+
+static void aqua_mqtt_begin_cwjap(MqttClient *mqtt, char *cmd_buf,
+                                  size_t cmd_buf_size) {
+  char esc_ssid[33 * 2 + 1];
+  char esc_password[65 * 2 + 1];
+
+  at_escape_string(mqtt->config.wifi_ssid, esc_ssid, sizeof(esc_ssid));
+  at_escape_string(mqtt->config.wifi_password, esc_password,
+                   sizeof(esc_password));
+
+  snprintf(cmd_buf, cmd_buf_size, "AT+CWJAP=\"%s\",\"%s\"", esc_ssid,
+           esc_password);
+  aqua_at_begin(mqtt->at, cmd_buf, AT_TIMEOUT_WIFI);
+}
+
+static bool is_placeholder_wifi_ssid(const char *ssid) {
+  if (!ssid || ssid[0] == '\0') {
+    return true;
+  }
+  return (strcmp(ssid, "YourWiFiSSID") == 0 || strcmp(ssid, "your_wifi_ssid") == 0 ||
+          strcmp(ssid, "CHANGE_ME") == 0);
+}
+
+static bool is_placeholder_wifi_password(const char *password) {
+  if (!password || password[0] == '\0') {
+    return true;
+  }
+  return (strcmp(password, "YourWiFiPassword") == 0 ||
+          strcmp(password, "your_wifi_password") == 0 ||
+          strcmp(password, "CHANGE_ME") == 0);
+}
+
+static bool aqua_mqtt_should_enter_ap_bootstrap(const MqttClient *mqtt) {
+  if (!mqtt) {
+    return true;
+  }
+  return is_placeholder_wifi_ssid(mqtt->config.wifi_ssid) ||
+         is_placeholder_wifi_password(mqtt->config.wifi_password);
+}
+
+/* Preserve non-publish URCs observed during PUB_DATA so command URCs are not
+ * lost while waiting for +MQTTPUB completion. */
+static void aqua_mqtt_requeue_urcs(AtClient *at, const AtLine *lines,
+                                   size_t count) {
+  if (!at || !lines || count == 0) {
+    return;
+  }
+
+  for (size_t i = 0; i < count; ++i) {
+    const AtLine *src = &lines[i];
+    if (!src->valid) {
+      continue;
+    }
+    if (at->urc_count >= AT_URC_QUEUE_SIZE) {
+      break;
+    }
+
+    AtLine *dst = &at->urc_queue[at->urc_head];
+    size_t copy_len = src->len;
+    if (copy_len > AT_LINE_MAX_LEN) {
+      copy_len = AT_LINE_MAX_LEN;
+    }
+
+    memcpy(dst->data, src->data, copy_len);
+    dst->data[copy_len] = '\0';
+    dst->len = copy_len;
+    dst->valid = true;
+
+    at->urc_head = (at->urc_head + 1) % AT_URC_QUEUE_SIZE;
+    at->urc_count++;
+  }
+}
+
 /* ============================================================================
- * 鍒濆鍖?
+ * 
  * ============================================================================
  */
 
@@ -91,7 +192,7 @@ MqttConnState aqua_mqtt_get_state(const MqttClient *mqtt) {
 }
 
 /* ============================================================================
- * 鍙戝竷
+ * 
  * ============================================================================
  */
 
@@ -104,7 +205,7 @@ bool aqua_mqtt_publish(MqttClient *mqtt, const char *topic, const char *payload,
   if (len > MQTT_PAYLOAD_MAX_LEN - 1)
     return false;
 
-  /* 瀹夊叏澶嶅埗 topic锛岀‘淇?null 缁堟 */
+ /* topic null */
   strncpy(mqtt->pub_topic, topic, MQTT_TOPIC_MAX_LEN - 1);
   mqtt->pub_topic[MQTT_TOPIC_MAX_LEN - 1] = '\0';
 
@@ -112,8 +213,8 @@ bool aqua_mqtt_publish(MqttClient *mqtt, const char *topic, const char *payload,
   mqtt->pub_payload[len] = '\0';
   mqtt->pub_payload_len = len;
 
-  /* 鍙戦€?AT+MQTTPUBRAW锛屼娇鐢ㄨ冻澶熷ぇ鐨勭紦鍐插尯 */
-  /* 杩欎釜鍛戒护鍝嶅簲椤哄簭鏄?OK -> >锛岄渶瑕佷娇鐢?begin_with_prompt */
+ /* AT+MQTTPUBRAW */
+ /* OK -> > begin_with_prompt */
   char cmd[MQTT_TOPIC_MAX_LEN + 64];
   snprintf(cmd, sizeof(cmd), "AT+MQTTPUBRAW=0,\"%s\",%zu,0,0", mqtt->pub_topic,
            mqtt->pub_payload_len);
@@ -123,8 +224,20 @@ bool aqua_mqtt_publish(MqttClient *mqtt, const char *topic, const char *payload,
   return true;
 }
 
+/* After raw payload is sent, continue waiting for publish completion markers. */
+static void aqua_mqtt_arm_publish_result_wait(MqttClient *mqtt) {
+  if (!mqtt || !mqtt->at) {
+    return;
+  }
+  mqtt->at->state = AT_STATE_WAITING;
+  mqtt->at->expect_prompt = false;
+  mqtt->at->got_ok = false;
+  mqtt->at->cmd_start_ms = mqtt->at->now_ms_func();
+  mqtt->at->cmd_timeout_ms = PUB_DATA_TIMEOUT_MS;
+}
+
 /* ============================================================================
- * 鐘舵€佹満姝ヨ繘
+ * 
  * ============================================================================
  */
 
@@ -135,8 +248,8 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   AtState at_state = aqua_at_step(mqtt->at);
   char cmd[256];
 
-  /* 绛夊緟 AT 鍛戒护瀹屾垚 */
-  if (at_state == AT_STATE_WAITING) {
+ /* AT */
+  if (at_state == AT_STATE_WAITING && mqtt->state != MQTT_STATE_PUB_DATA) {
     return mqtt->state;
   }
 
@@ -149,7 +262,8 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
       aqua_at_reset(mqtt->at);
       aqua_at_begin(mqtt->at, "ATE0", AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_ATE0;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -159,7 +273,8 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
       aqua_at_reset(mqtt->at);
       aqua_at_begin(mqtt->at, "AT+CWMODE=1", AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_CWMODE;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -167,11 +282,17 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_CWMODE:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      snprintf(cmd, sizeof(cmd), "AT+CWJAP=\"%s\",\"%s\"",
-               mqtt->config.wifi_ssid, mqtt->config.wifi_password);
-      aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_WIFI);
-      mqtt->state = MQTT_STATE_CWJAP;
-    } else {
+      if (aqua_mqtt_should_enter_ap_bootstrap(mqtt)) {
+        /* Empty/placeholder Wi-Fi defaults should not loop CWJAP failures. */
+        mqtt->cwjap_fail_count = 0;
+        aqua_at_begin(mqtt->at, "AT+CWMODE=3", AT_TIMEOUT_SHORT);
+        mqtt->state = MQTT_STATE_AP_START;
+      } else {
+        aqua_mqtt_begin_cwjap(mqtt, cmd, sizeof(cmd));
+        mqtt->state = MQTT_STATE_CWJAP;
+      }
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -179,26 +300,27 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_CWJAP:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      mqtt->cwjap_fail_count = 0; /* 鎴愬姛锛屾竻闆跺け璐ヨ鏁?*/
-      /* WiFi 杩炴帴鎴愬姛锛岄厤缃?SNTP 鑾峰彇缃戠粶鏃堕棿 */
-      /* IoTDA MQTT 閴存潈鏃堕棿鎴宠姹?UTC(YYYYMMDDHH) */
+ mqtt->cwjap_fail_count = 0; /* */
+ /* WiFi SNTP */
+ /* IoTDA MQTT UTC(YYYYMMDDHH) */
       aqua_at_begin(mqtt->at,
-                    "AT+CIPSNTPCFG=1,0,\"ntp.aliyun.com\",\"ntp.ntsc.ac.cn\"",
+                    "AT+CIPSNTPCFG=1,0,\"ntp.aliyun.com\","
+                    "\"ntp.ntsc.ac.cn\",\"time.cloudflare.com\"",
                     AT_TIMEOUT_SNTP);
+      mqtt->retry_count = 0;
       mqtt->state = MQTT_STATE_SNTPCFG;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->cwjap_fail_count++;
       aqua_at_reset(mqtt->at);
       if (mqtt->cwjap_fail_count >= CWJAP_MAX_FAILS) {
-        /* 瓒呰繃鏈€澶ч噸璇曟鏁帮紝杩涘叆 AP 閰嶇綉妯″紡 */
-        /* 璁剧疆涓?AP+STA 妯″紡 */
+ /* AP */
+ /* AP+STA */
         aqua_at_begin(mqtt->at, "AT+CWMODE=3", AT_TIMEOUT_SHORT);
         mqtt->state = MQTT_STATE_AP_START;
       } else {
-        /* 閲嶈瘯杩炴帴 */
-        snprintf(cmd, sizeof(cmd), "AT+CWJAP=\"%s\",\"%s\"",
-                 mqtt->config.wifi_ssid, mqtt->config.wifi_password);
-        aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_WIFI);
+ /* */
+        aqua_mqtt_begin_cwjap(mqtt, cmd, sizeof(cmd));
       }
     }
     break;
@@ -206,31 +328,55 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_SNTPCFG:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      /* SNTP 閰嶇疆鎴愬姛锛屾煡璇㈡椂闂?*/
+ /* SNTP */
       aqua_at_begin(mqtt->at, "AT+CIPSNTPTIME?", AT_TIMEOUT_SNTP);
       mqtt->state = MQTT_STATE_SNTPTIME;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
 
   case MQTT_STATE_SNTPTIME:
     if (at_state == AT_STATE_DONE_OK) {
-      /* 瑙ｆ瀽鏃堕棿骞惰缃椂闂存埑 */
+ /* */
       const AtLine *resp = aqua_at_get_response(mqtt->at);
       char ts[12];
       bool ts_ok = (resp && aqua_mqtt_parse_sntp_time(resp->data, ts) &&
                     strlen(ts) == 10);
+
+      if (!ts_ok && aqua_at_has_urc(mqtt->at)) {
+        AtLine urc;
+        while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
+          if (aqua_mqtt_parse_sntp_time(urc.data, ts) && strlen(ts) == 10) {
+            ts_ok = true;
+            break;
+          }
+        }
+      }
+
       if (ts_ok) {
         aqua_mqtt_set_timestamp(mqtt, ts);
+        mqtt->retry_count = 0;
       }
       aqua_at_reset(mqtt->at);
-      /* SNTP 瑙ｆ瀽澶辫触锛氫笉瑕佺户缁敤鏃?timestamp 閴存潈锛岀洿鎺ヨ繘鍏?ERROR 瑙﹀彂閲嶈繛 */
-      if (!ts_ok || strlen(mqtt->timestamp) != 10) {
+
+      if (!ts_ok) {
+        if (mqtt->retry_count < SNTP_QUERY_MAX_RETRY) {
+          mqtt->retry_count++;
+          aqua_at_begin(mqtt->at, "AT+CIPSNTPTIME?", AT_TIMEOUT_SNTP);
+          mqtt->state = MQTT_STATE_SNTPTIME;
+        } else {
+          mqtt->state = MQTT_STATE_ERROR;
+        }
+        break;
+      }
+
+      if (strlen(mqtt->timestamp) != 10) {
         mqtt->state = MQTT_STATE_ERROR;
         break;
       }
-      /* 鏋勫缓閴存潈鍙傛暟 */
+ /* */
       char client_id[128];
       char password[65];
       aqua_iotda_build_client_id(mqtt->config.device_id, IOTDA_SIGN_TYPE_CHECK,
@@ -242,7 +388,8 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
                mqtt->config.device_id, password);
       aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_MQTTUSERCFG;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -254,7 +401,8 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
                mqtt->config.broker_host, mqtt->config.broker_port);
       aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_MQTT);
       mqtt->state = MQTT_STATE_MQTTCONN;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -267,7 +415,8 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
                mqtt->config.device_id);
       aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_MQTT);
       mqtt->state = MQTT_STATE_MQTTSUB;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -276,25 +425,35 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
       mqtt->state = MQTT_STATE_ONLINE;
-    } else {
+    } else if (at_state == AT_STATE_DONE_TIMEOUT) {
+      /*
+       * Some ESP-AT releases occasionally miss the trailing OK for MQTTSUB
+       * while subscription is already effective. Do not force reconnect storm.
+       */
+      aqua_at_reset(mqtt->at);
+      mqtt->state = MQTT_STATE_ONLINE;
+    } else if (at_state == AT_STATE_DONE_ERROR) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
 
   case MQTT_STATE_PUBLISHING:
     /*
-     * AT+MQTTPUBRAW 娴佺▼锛?
-     * 1. 鍙戦€佸懡浠?鈫?绛夊緟 > 鎻愮ず绗?
-     * 2. 鍙戦€?payload 鏁版嵁
-     * 3. 绛夊緟 +MQTTPUB:OK 鎴?+MQTTPUB:FAIL
+ * AT+MQTTPUBRAW 
+ * 1. > 
+ * 2. payload 
+ * 3. +MQTTPUB:OK +MQTTPUB:FAIL
      */
     if (at_state == AT_STATE_GOT_PROMPT) {
-      /* 鏀跺埌 > 鎻愮ず绗︼紝鍙戦€?payload 鏁版嵁锛堜笉鐢?\r\n 缁撳熬锛?*/
+ /* > payload \r\n */
       mqtt->at->write_func((const uint8_t *)mqtt->pub_payload,
                            mqtt->pub_payload_len);
       mqtt->state = MQTT_STATE_PUB_DATA;
-      /* 閲嶇疆 AT 鐘舵€侊紝绛夊緟 URC */
-      aqua_at_reset(mqtt->at);
+      /*
+       * Some ESP-AT builds report publish completion via plain final OK
+       * (without +MQTTPUB URC). Re-arm AT wait state so DONE_OK is observable.
+       */
+      aqua_mqtt_arm_publish_result_wait(mqtt);
     } else if (at_state == AT_STATE_DONE_ERROR ||
                at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
@@ -303,36 +462,73 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
 
   case MQTT_STATE_PUB_DATA: {
     /*
-     * 妫€鏌?URC 闃熷垪涓槸鍚︽湁 +MQTTPUB:OK 鎴?+MQTTPUB:FAIL
+ * URC +MQTTPUB:OK +MQTTPUB:FAIL
      */
+    AtLine deferred_urcs[AT_URC_QUEUE_SIZE];
+    size_t deferred_count = 0;
     if (aqua_at_has_urc(mqtt->at)) {
       AtLine urc;
       while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
         if (strstr(urc.data, "+MQTTPUB:OK") != NULL) {
+          aqua_at_reset(mqtt->at);
           mqtt->state = MQTT_STATE_ONLINE;
           break;
         } else if (strstr(urc.data, "+MQTTPUB:FAIL") != NULL) {
+          aqua_at_reset(mqtt->at);
           mqtt->state = MQTT_STATE_ERROR;
           break;
+        } else if (deferred_count < AT_URC_QUEUE_SIZE) {
+          deferred_urcs[deferred_count++] = urc;
         }
+      }
+
+      if (deferred_count > 0) {
+        aqua_mqtt_requeue_urcs(mqtt->at, deferred_urcs, deferred_count);
       }
     }
 
-    /* 瓒呮椂妫€娴?*/
+    if (mqtt->state == MQTT_STATE_PUB_DATA) {
+      /*
+       * Compatibility path: some firmware only gives final OK after payload,
+       * no +MQTTPUB URC. Treat DONE_OK as publish success.
+       */
+      if (at_state == AT_STATE_DONE_OK) {
+        aqua_at_reset(mqtt->at);
+        mqtt->state = MQTT_STATE_ONLINE;
+        break;
+      }
+      if (at_state == AT_STATE_DONE_ERROR) {
+        aqua_at_reset(mqtt->at);
+        mqtt->state = MQTT_STATE_ERROR;
+        break;
+      }
+      if (at_state == AT_STATE_DONE_TIMEOUT) {
+        /*
+         * Some ESP-AT variants do not emit explicit publish completion lines.
+         * Keep connection online on timeout to avoid reconnect storms.
+         */
+        aqua_at_reset(mqtt->at);
+        mqtt->state = MQTT_STATE_ONLINE;
+        break;
+      }
+    }
+
+ /* */
     if (mqtt->state == MQTT_STATE_PUB_DATA) {
       uint32_t now = mqtt->at->now_ms_func();
       if (now - mqtt->pub_start_ms >= PUB_DATA_TIMEOUT_MS) {
-        mqtt->state = MQTT_STATE_ERROR;
+        aqua_at_reset(mqtt->at);
+        mqtt->state = MQTT_STATE_ONLINE;
       }
     }
     break;
   }
 
-  /* ====================== AP 閰嶇綉鐘舵€佹満 ====================== */
+ /* ====================== AP ====================== */
   case MQTT_STATE_AP_START:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      /* 閰嶇疆 SoftAP */
+ /* SoftAP */
       const char *ap_ssid =
           mqtt->ap_ssid[0] != '\0' ? mqtt->ap_ssid : AP_SSID_DEFAULT;
       const char *ap_pwd = mqtt->ap_password[0] != '\0' ? mqtt->ap_password
@@ -341,7 +537,8 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
                ap_pwd);
       aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_AP_CIPMUX;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -349,10 +546,11 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_AP_CIPMUX:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      /* 鍚敤澶氳繛鎺ユā寮忥紙TCP 鏈嶅姟鍣ㄩ渶瑕侊級 */
+      /* Enable multi-connection mode required by TCP server. */
       aqua_at_begin(mqtt->at, "AT+CIPMUX=1", AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_AP_CIPDINFO;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -360,10 +558,11 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_AP_CIPDINFO:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      /* 璁剧疆 +IPD 鏍煎紡涓虹畝鍗曟牸寮忥細+IPD,<link_id>,<len>:<data> */
-      aqua_at_begin(mqtt->at, "AT+CIPDINFO=0", AT_TIMEOUT_SHORT);
+      /* Force active receive mode so +IPD includes HTTP payload. */
+      aqua_at_begin(mqtt->at, "AT+CIPRECVMODE=0", AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_AP_SERVER;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
@@ -371,25 +570,41 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_AP_SERVER:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      /* 鍚姩 TCP 鏈嶅姟鍣?*/
+      /* Start TCP config server. */
       snprintf(cmd, sizeof(cmd), "AT+CIPSERVER=1,%d", AP_SERVER_PORT);
       aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_AP_WAIT;
-    } else {
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
 
   case MQTT_STATE_AP_WAIT:
-    /* 绛夊緟 AT+CIPSERVER OK 鍚庤繘鍏ョ┖闂茬瓑寰?*/
-    /* HTTP 璇锋眰鐢?aqua_mqtt_poll_ap_config() 澶勭悊 */
-    /* 璇ュ嚱鏁颁細璁剧疆 ap_link_id, ap_send_html, ap_req_type 骞惰浆鎹㈢姸鎬?*/
+    /*
+     * AP_WAIT has two phases:
+     * 1) immediately after issuing AT+CIPSERVER=1,80: consume DONE_OK / DONE_ERROR
+     * 2) steady-state idle: wait URC +IPD and let poll_ap_config() handle requests
+     */
+    if (at_state == AT_STATE_DONE_OK) {
+      aqua_at_reset(mqtt->at);
+    } else if (at_state == AT_STATE_DONE_ERROR) {
+      aqua_at_reset(mqtt->at);
+      mqtt->state = MQTT_STATE_ERROR;
+    } else if (at_state == AT_STATE_DONE_TIMEOUT) {
+      /*
+       * Some ESP-AT builds can accept CIPSERVER but miss the final OK line
+       * under heavy captive-portal traffic. Do not drop AP mode on this timeout;
+       * reset AT state and continue serving incoming +IPD requests.
+       */
+      aqua_at_reset(mqtt->at);
+    }
     break;
 
   case MQTT_STATE_AP_SENDING:
-    /* 绛夊緟 AT+CIPSEND 杩斿洖 > 鎻愮ず绗︼紙琛ㄧず鍙互鍙戦€佹暟鎹級 */
+ /* AT+CIPSEND > */
     if (at_state == AT_STATE_GOT_PROMPT) {
-      /* 鍙戦€?HTML 鏁版嵁 */
+ /* HTML */
       if (mqtt->ap_send_html) {
         mqtt->at->write_func((const uint8_t *)mqtt->ap_send_html,
                              strlen(mqtt->ap_send_html));
@@ -398,7 +613,7 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
       mqtt->state = MQTT_STATE_AP_SEND_DATA;
     } else if (at_state == AT_STATE_DONE_ERROR ||
                at_state == AT_STATE_DONE_TIMEOUT) {
-      /* CIPSEND 澶辫触锛岀洿鎺ュ叧闂繛鎺?*/
+ /* CIPSEND */
       aqua_at_reset(mqtt->at);
       snprintf(cmd, sizeof(cmd), "AT+CIPCLOSE=%d", mqtt->ap_link_id);
       aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
@@ -407,13 +622,13 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
     break;
 
   case MQTT_STATE_AP_SEND_DATA: {
-    /* 绛夊緟 SEND OK 鎴?SEND FAIL锛堥€氳繃 URC 妫€娴嬶級 */
+ /* SEND OK SEND FAIL URC */
     if (aqua_at_has_urc(mqtt->at)) {
       AtLine urc;
       while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
         if (strstr(urc.data, "SEND OK") != NULL ||
             strstr(urc.data, "SEND FAIL") != NULL) {
-          /* 鍙戦€佸畬鎴愶紝鍏抽棴杩炴帴 */
+ /* */
           aqua_at_reset(mqtt->at);
           snprintf(cmd, sizeof(cmd), "AT+CIPCLOSE=%d", mqtt->ap_link_id);
           aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
@@ -426,15 +641,15 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   }
 
   case MQTT_STATE_AP_CLOSE:
-    /* CIPCLOSE 瀹屾垚鍚庡喅瀹氫笅涓€姝?*/
+ /* CIPCLOSE */
     if (at_state == AT_STATE_DONE_OK || at_state == AT_STATE_DONE_ERROR) {
       aqua_at_reset(mqtt->at);
       if (mqtt->ap_req_type == 2) {
-        /* 閰嶇疆宸叉彁浜わ紝鍏抽棴鏈嶅姟鍣ㄥ苟閲嶈繛 WiFi */
+ /* WiFi */
         aqua_at_begin(mqtt->at, "AT+CIPSERVER=0", AT_TIMEOUT_SHORT);
         mqtt->state = MQTT_STATE_AP_STOP;
       } else {
-        /* 缁х画绛夊緟涓嬩竴涓姹?*/
+ /* */
         mqtt->state = MQTT_STATE_AP_WAIT;
       }
     }
@@ -443,33 +658,33 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_AP_STOP:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      /* 鍒囧洖 STA 妯″紡骞堕噸璇?WiFi 杩炴帴 */
+ /* STA WiFi */
       aqua_at_begin(mqtt->at, "AT+CWMODE=1", AT_TIMEOUT_SHORT);
       mqtt->cwjap_fail_count = 0;
       mqtt->state = MQTT_STATE_CWMODE;
     } else {
-      /* 缁х画绛夊緟 */
+ /* */
     }
     break;
 
   case MQTT_STATE_ONLINE:
-    /* 妫€鏌?WiFi 閰嶇疆鏄惁鍙樻洿锛岄渶瑕侀噸杩?*/
+ /* WiFi */
     if (mqtt->wifi_changed) {
       mqtt->wifi_changed = false;
       mqtt->cwjap_fail_count = 0;
       mqtt->reconnect_delay_ms = RECONNECT_DELAY_INIT_MS;
       aqua_at_reset(mqtt->at);
-      /* 鍏堟柇寮€ MQTT */
+ /* MQTT */
       aqua_at_begin(mqtt->at, "AT+MQTTCLEAN=0", AT_TIMEOUT_SHORT);
-      mqtt->state = MQTT_STATE_AT_TEST; /* 浠庡ご閲嶈繛 */
+ mqtt->state = MQTT_STATE_AT_TEST; /* */
     }
     break;
 
   case MQTT_STATE_ERROR: {
-    /* 鑷姩閲嶈繛锛氬甫閫€閬跨殑寤惰繜閲嶈瘯 */
+ /* */
     uint32_t now = mqtt->at->now_ms_func();
 
-    /* 棣栨杩涘叆 ERROR锛岃褰曟椂闂村苟璁剧疆鍒濆閫€閬?*/
+ /* ERROR */
     if (mqtt->error_time_ms == 0) {
       mqtt->error_time_ms = now;
       if (mqtt->reconnect_delay_ms == 0) {
@@ -477,14 +692,14 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
       }
     }
 
-    /* 妫€鏌ユ槸鍚﹀埌杈鹃€€閬挎椂闂?*/
+ /* */
     if (now - mqtt->error_time_ms >= mqtt->reconnect_delay_ms) {
-      /* 澧炲姞閫€閬垮欢杩燂紙鎸囨暟閫€閬匡級 */
+ /* */
       mqtt->reconnect_delay_ms *= RECONNECT_DELAY_FACTOR;
       if (mqtt->reconnect_delay_ms > RECONNECT_DELAY_MAX_MS) {
         mqtt->reconnect_delay_ms = RECONNECT_DELAY_MAX_MS;
       }
-      /* 閲嶇疆骞跺紑濮嬮噸杩?*/
+ /* */
       mqtt->error_time_ms = 0;
       mqtt->cwjap_fail_count = 0;
       aqua_at_reset(mqtt->at);
@@ -499,30 +714,30 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
 }
 
 /* ============================================================================
- * 涓嬭鍛戒护澶勭悊
+ * 
  * ============================================================================
  */
 
 /**
- * 瑙ｆ瀽 +MQTTSUBRECV:<LinkID>,"<topic>",<data_len>,<data>
- * 杩斿洖 true 琛ㄧず瑙ｆ瀽鎴愬姛
+ * +MQTTSUBRECV:<LinkID>,"<topic>",<data_len>,<data>
+ * true 
  */
 static bool parse_mqttsubrecv(const char *line, char *out_topic,
                               size_t topic_size, char *out_payload,
                               size_t payload_size) {
-  /* 鏌ユ壘 +MQTTSUBRECV: */
+ /* +MQTTSUBRECV: */
   const char *p = strstr(line, "+MQTTSUBRECV:");
   if (!p)
     return false;
-  p += 13; /* 璺宠繃 +MQTTSUBRECV: */
+ p += 13; /* +MQTTSUBRECV: */
 
-  /* 璺宠繃 LinkID 鍜岄€楀彿 */
+ /* LinkID */
   while (*p && *p != ',')
     p++;
   if (*p == ',')
     p++;
 
-  /* 瑙ｆ瀽 topic锛堝湪寮曞彿鍐咃級 */
+ /* topic */
   if (*p != '"')
     return false;
   p++;
@@ -540,7 +755,7 @@ static bool parse_mqttsubrecv(const char *line, char *out_topic,
   if (*p == ',')
     p++;
 
-  /* 瑙ｆ瀽 data_len */
+ /* data_len */
   int data_len = 0;
   while (*p >= '0' && *p <= '9') {
     data_len = data_len * 10 + (*p - '0');
@@ -549,15 +764,14 @@ static bool parse_mqttsubrecv(const char *line, char *out_topic,
   if (*p == ',')
     p++;
 
-  /* 鏍￠獙瀹為檯鍙敤鏁版嵁闀垮害锛岄槻姝㈡埅鏂椂瓒婄晫 */
+ /* payload：
+  * 某些场景下 URC 可能被截断（例如 AT 行缓冲不足），这里不直接丢弃，
+  * 而是尽量保留可用部分，后续交给命令解析层返回错误响应，避免平台超时。 */
   size_t available_len = strlen(p);
-  if ((size_t)data_len > available_len) {
-    /* 鏁版嵁琚埅鏂紝鎷掔粷瑙ｆ瀽 */
-    return false;
-  }
-
-  /* 澶嶅埗 payload */
   size_t copy_len = (size_t)data_len;
+  if (copy_len > available_len) {
+    copy_len = available_len;
+  }
   if (copy_len >= payload_size)
     copy_len = payload_size - 1;
   memcpy(out_payload, p, copy_len);
@@ -576,7 +790,7 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
   AtLine urc;
 
   while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
-    /* 妫€鏌ユ槸鍚︽槸 +MQTTSUBRECV */
+ /* +MQTTSUBRECV */
     if (strstr(urc.data, "+MQTTSUBRECV:") == NULL)
       continue;
 
@@ -588,7 +802,7 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
       continue;
     }
 
-    /* 瑙ｆ瀽鍛戒护浠ュ垽鏂槸鍚︽秹鍙?WiFi 鍙樻洿 */
+ /* WiFi */
     ParsedCommand cmd;
     bool wifi_change_needed = false;
     if (aqua_parse_command_json(payload, strlen(payload), &cmd) == AQUA_OK) {
@@ -596,11 +810,15 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
           cmd.params.config.has_wifi_ssid &&
           cmd.params.config.has_wifi_password &&
           cmd.params.config.wifi_ssid[0] != '\0') {
-        wifi_change_needed = true;
+        if (strcmp(cmd.params.config.wifi_ssid, mqtt->config.wifi_ssid) != 0 ||
+            strcmp(cmd.params.config.wifi_password, mqtt->config.wifi_password) !=
+                0) {
+          wifi_change_needed = true;
+        }
       }
     }
 
-    /* 璋冪敤 app 灞傚鐞嗗懡浠?*/
+ /* app */
     char resp_topic[MQTT_TOPIC_MAX_LEN];
     char resp_payload[MQTT_PAYLOAD_MAX_LEN];
     bool has_response = false;
@@ -609,11 +827,20 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
         mqtt->app, topic, payload, strlen(payload), &has_response, resp_topic,
         sizeof(resp_topic), resp_payload, sizeof(resp_payload));
 
-    /* 濡傛灉鏈夊搷搴斾笖闇€瑕佸洖鍙?*/
+ /* */
     if (err == AQUA_OK && has_response) {
-      aqua_mqtt_publish(mqtt, resp_topic, resp_payload, strlen(resp_payload));
+      bool publish_started =
+          aqua_mqtt_publish(mqtt, resp_topic, resp_payload, strlen(resp_payload));
+      if (!publish_started) {
+        /*
+         * 同步命令必须回包。若回包发布未启动（状态异常/缓冲问题），不要静默吞掉，
+         * 直接进入 ERROR 触发重连，避免平台持续超时且现场无感知。
+         */
+        mqtt->state = MQTT_STATE_ERROR;
+        mqtt->error_time_ms = mqtt->at->now_ms_func();
+      }
 
-      /* 鑻ユ秹鍙?WiFi 鍙樻洿锛屽悓姝ュ埌 mqtt->config 骞舵爣璁伴噸杩?*/
+ /* WiFi mqtt->config */
       if (wifi_change_needed) {
         strncpy(mqtt->config.wifi_ssid, mqtt->app->state.config.wifi_ssid,
                 sizeof(mqtt->config.wifi_ssid) - 1);
@@ -627,7 +854,7 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
       }
 
       handled = true;
-      /* publish 宸插彂璧凤紝break 閬垮厤缁х画澶勭悊鍚庣画鍛戒护 */
+ /* publish break */
       break;
     }
 
@@ -637,7 +864,7 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
   return handled;
 }
 
-/* 閰嶇疆椤?HTML锛堟瀬绠€鐗堟湰浠ヨ妭鐪佸唴瀛橈級 */
+/* HTML */
 static const char *AP_CONFIG_HTML =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html\r\n\r\n"
@@ -657,12 +884,12 @@ static const char *AP_SUCCESS_HTML =
     "<h2>Config Saved!</h2><p>Device will reconnect...</p></body></html>";
 
 /**
- * @brief AP 閰嶇綉妯″紡涓嬪鐞?HTTP 璇锋眰锛堥潪闃诲锛?
+ * @brief AP HTTP 
  *
- * 瑙ｆ瀽 +IPD URC锛岃缃彂閫佸弬鏁板悗杞崲鍒?AP_SENDING 鐘舵€?
- * 瀹為檯鍙戦€佺敱鐘舵€佹満鐨?AP_SENDING/AP_SEND_DATA 澶勭悊
+ * +IPD URC AP_SENDING 
+ * AP_SENDING/AP_SEND_DATA 
  *
- * @return true 濡傛灉瑙﹀彂浜嗗彂閫佹祦绋?
+ * @return true 
  */
 bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
   if (!mqtt || !mqtt->at || !mqtt->app)
@@ -673,16 +900,16 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
   AtLine urc;
   while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
     /*
-     * 鍏煎涓ょ +IPD 鏍煎紡锛?
-     * - 绠€鍗曟牸寮?(CIPDINFO=0): +IPD,<link_id>,<len>:<data>
-     * - 璇︾粏鏍煎紡 (CIPDINFO=1):
+ * +IPD 
+ * - (CIPDINFO=0): +IPD,<link_id>,<len>:<data>
+ * - (CIPDINFO=1):
      * +IPD,<link_id>,<len>,<remote_ip>,<remote_port>:<data>
      */
     const char *ipd = strstr(urc.data, "+IPD,");
     if (!ipd)
       continue;
 
-    /* 瑙ｆ瀽 link_id */
+ /* link_id */
     ipd += 5;
     int link_id = 0;
     while (*ipd >= '0' && *ipd <= '9') {
@@ -692,37 +919,37 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
     if (*ipd == ',')
       ipd++;
 
-    /* 璺宠繃 len */
+ /* len */
     while (*ipd >= '0' && *ipd <= '9')
       ipd++;
 
-    /* 璺宠繃鍙兘鐨?remote_ip 鍜?remote_port锛堣缁嗘牸寮忥級 */
+ /* remote_ip remote_port */
     while (*ipd == ',' || *ipd == '.' || (*ipd >= '0' && *ipd <= '9'))
       ipd++;
 
     if (*ipd == ':')
       ipd++;
 
-    /* 鐜板湪 ipd 鎸囧悜 HTTP 璇锋眰鏁版嵁 */
+ /* ipd HTTP */
     char ssid[33] = {0};
     char pwd[65] = {0};
     int req_type = aqua_mqtt_parse_ap_request(ipd, ssid, pwd);
 
     if (req_type == 0)
-      continue; /* 鏃犳晥璇锋眰锛屽拷鐣?*/
+ continue; /* */
 
-    /* 淇濆瓨鍙戦€佸弬鏁?*/
+ /* */
     mqtt->ap_link_id = link_id;
     mqtt->ap_req_type = req_type;
 
     char cmd[128];
     if (req_type == 1) {
-      /* 璇锋眰棣栭〉 */
+ /* */
       mqtt->ap_send_html = AP_CONFIG_HTML;
       snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d,%zu", link_id,
                strlen(AP_CONFIG_HTML));
     } else if (req_type == 2) {
-      /* 淇濆瓨閰嶇疆 */
+ /* */
       strncpy(mqtt->config.wifi_ssid, ssid, sizeof(mqtt->config.wifi_ssid) - 1);
       mqtt->config.wifi_ssid[sizeof(mqtt->config.wifi_ssid) - 1] = '\0';
       strncpy(mqtt->config.wifi_password, pwd,
@@ -730,7 +957,7 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
       mqtt->config.wifi_password[sizeof(mqtt->config.wifi_password) - 1] =
           '\0';
 
-      /* 鍚屾鍒?app 灞傞厤缃苟鏍囪涓鸿剰 */
+ /* app */
       if (mqtt->app) {
         strncpy(mqtt->app->state.config.wifi_ssid, ssid,
                 sizeof(mqtt->app->state.config.wifi_ssid) - 1);
@@ -748,7 +975,7 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
                strlen(AP_SUCCESS_HTML));
     }
 
-    /* 鍙戣捣 AT+CIPSEND锛堝搷搴旈『搴忔槸 OK -> >锛岄渶瑕佷娇鐢?begin_with_prompt锛?*/
+ /* AT+CIPSEND OK -> > begin_with_prompt */
     aqua_at_begin_with_prompt(mqtt->at, cmd, AT_TIMEOUT_SHORT);
     mqtt->state = MQTT_STATE_AP_SENDING;
     return true;
@@ -758,12 +985,12 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
 }
 
 /* ============================================================================
- * SNTP 鏃堕棿瑙ｆ瀽
+ * SNTP 
  * ============================================================================
  */
 
 /**
- * 瑙ｆ瀽鏈堜唤缂╁啓涓烘暟瀛楋紙1-12锛?
+ * 1-12 
  */
 static int parse_month(const char *mon) {
   for (int i = 0; i < 12; i++) {
@@ -774,24 +1001,31 @@ static int parse_month(const char *mon) {
   return 0;
 }
 
+static const char *skip_spaces(const char *p) {
+  while (p && *p == ' ') {
+    p++;
+  }
+  return p;
+}
+
 bool aqua_mqtt_parse_sntp_time(const char *sntp_line, char *out_ts) {
   if (!sntp_line || !out_ts)
     return false;
 
-  /* 鏌ユ壘 +CIPSNTPTIME: 鍓嶇紑 */
+ /* +CIPSNTPTIME: */
   const char *p = strstr(sntp_line, "+CIPSNTPTIME:");
   if (!p)
     return false;
-  p += 13; /* 璺宠繃 "+CIPSNTPTIME:" */
+ p += 13; /* "+CIPSNTPTIME:" */
 
-  /* 鏍煎紡: "Mon Oct 18 20:12:27 2021" */
-  /* 璺宠繃鏄熸湡鍑狅紙3瀛楃+绌烘牸锛?*/
+ /* : "Mon Oct 18 20:12:27 2021" */
+ /* 3 + */
   while (*p && *p != ' ')
     p++;
   if (*p == ' ')
     p++;
 
-  /* 瑙ｆ瀽鏈堜唤锛?瀛楃锛?*/
+ /* */
   char mon[4] = {0};
   if (strlen(p) < 3)
     return false;
@@ -800,10 +1034,9 @@ bool aqua_mqtt_parse_sntp_time(const char *sntp_line, char *out_ts) {
   if (month == 0)
     return false;
   p += 3;
-  if (*p == ' ')
-    p++;
+  p = skip_spaces(p);
 
-  /* 瑙ｆ瀽鏃ユ湡 */
+ /* */
   int day = 0;
   while (*p >= '0' && *p <= '9') {
     day = day * 10 + (*p - '0');
@@ -811,10 +1044,9 @@ bool aqua_mqtt_parse_sntp_time(const char *sntp_line, char *out_ts) {
   }
   if (day < 1 || day > 31)
     return false;
-  if (*p == ' ')
-    p++;
+  p = skip_spaces(p);
 
-  /* 瑙ｆ瀽灏忔椂 */
+ /* */
   int hour = 0;
   while (*p >= '0' && *p <= '9') {
     hour = hour * 10 + (*p - '0');
@@ -823,13 +1055,12 @@ bool aqua_mqtt_parse_sntp_time(const char *sntp_line, char *out_ts) {
   if (hour > 23)
     return false;
 
-  /* 璺宠繃鍒嗛挓鍜岀 (":MM:SS ") */
+ /* (":MM:SS ") */
   while (*p && *p != ' ')
     p++;
-  if (*p == ' ')
-    p++;
+  p = skip_spaces(p);
 
-  /* 瑙ｆ瀽骞翠唤 */
+ /* */
   int year = 0;
   while (*p >= '0' && *p <= '9') {
     year = year * 10 + (*p - '0');
@@ -838,7 +1069,7 @@ bool aqua_mqtt_parse_sntp_time(const char *sntp_line, char *out_ts) {
   if (year < 2020 || year > 2100)
     return false;
 
-  /* 杈撳嚭 YYYYMMDDHH 鏍煎紡锛堝浐瀹?10 瀛楃 + '\0'锛?*/
+ /* YYYYMMDDHH 10 + '\0' */
   out_ts[0] = (char)('0' + ((year / 1000) % 10));
   out_ts[1] = (char)('0' + ((year / 100) % 10));
   out_ts[2] = (char)('0' + ((year / 10) % 10));
@@ -858,18 +1089,18 @@ bool aqua_mqtt_parse_sntp_time(const char *sntp_line, char *out_ts) {
 }
 
 /* ============================================================================
- * AP 閰嶇綉杈呭姪鍑芥暟
+ * AP 
  * ============================================================================
  */
 
 /**
- * @brief URL 瑙ｇ爜杈呭姪鍑芥暟
+ * @brief URL 
  */
 static void url_decode(const char *src, char *dst, size_t dst_size) {
   size_t i = 0;
   while (*src && i < dst_size - 1) {
     if (*src == '%' && src[1] && src[2]) {
-      /* 瑙ｆ瀽 %XX */
+ /* %XX */
       char hex[3] = {src[1], src[2], '\0'};
       int val = 0;
       for (int j = 0; j < 2; j++) {
@@ -895,7 +1126,7 @@ static void url_decode(const char *src, char *dst, size_t dst_size) {
 }
 
 /**
- * @brief 浠?URL 鏌ヨ瀛楃涓蹭腑鎻愬彇鍙傛暟鍊?
+ * @brief URL 
  */
 static bool extract_param(const char *query, const char *name, char *out,
                           size_t out_size) {
@@ -903,11 +1134,11 @@ static bool extract_param(const char *query, const char *name, char *out,
   const char *p = query;
 
   while ((p = strstr(p, name)) != NULL) {
-    /* 妫€鏌ユ槸鍚︽槸鍙傛暟寮€澶达紙鍓嶉潰鏄?? 鎴?&锛?*/
+ /* & */
     if (p == query || *(p - 1) == '?' || *(p - 1) == '&') {
       if (p[name_len] == '=') {
         p += name_len + 1;
-        /* 鏌ユ壘鍙傛暟缁撳熬 */
+ /* */
         const char *end = p;
         while (*end && *end != '&' && *end != ' ' && *end != '\r' &&
                *end != '\n') {
@@ -916,7 +1147,7 @@ static bool extract_param(const char *query, const char *name, char *out,
         size_t len = (size_t)(end - p);
         if (len >= out_size)
           len = out_size - 1;
-        /* 鍏堝鍒跺埌涓存椂缂撳啿鍖哄啀 URL 瑙ｇ爜 */
+ /* URL */
         char temp[128];
         if (len >= sizeof(temp))
           len = sizeof(temp) - 1;
@@ -936,27 +1167,54 @@ int aqua_mqtt_parse_ap_request(const char *http_req, char *out_ssid,
   if (!http_req)
     return 0;
 
-  /* 鏌ユ壘 HTTP 璇锋眰琛?*/
+ /* HTTP */
   const char *get = strstr(http_req, "GET ");
   if (!get)
     return 0;
 
-  get += 4; /* 璺宠繃 "GET " */
+  get += 4; /* skip "GET " */
 
-  /* GET / -> 杩斿洖閰嶇疆椤?*/
-  if (*get == '/' && (get[1] == ' ' || get[1] == '\r' || get[1] == '\n')) {
+  /* parse request-target: origin-form or absolute-form */
+  const char *target_end = get;
+  while (*target_end && *target_end != ' ' && *target_end != '\r' &&
+         *target_end != '\n') {
+    target_end++;
+  }
+  if (target_end == get) {
+    return 0;
+  }
+
+  char target[256];
+  size_t target_len = (size_t)(target_end - get);
+  if (target_len >= sizeof(target)) {
+    target_len = sizeof(target) - 1;
+  }
+  memcpy(target, get, target_len);
+  target[target_len] = '\0';
+
+  const char *path = target;
+  if (strncmp(path, "http://", 7) == 0 || strncmp(path, "https://", 8) == 0) {
+    const char *host = strstr(path, "://");
+    if (host) {
+      host += 3;
+      const char *slash = strchr(host, '/');
+      path = slash ? slash : "/";
+    }
+  }
+
+ /* /configssid=...&pwd=... */
+  if (strncmp(path, "/config?", 8) == 0) {
+ const char *query = path + 7; /* points to '' */
+    if (out_ssid && out_pwd && extract_param(query, "ssid", out_ssid, 33) &&
+        extract_param(query, "pwd", out_pwd, 65)) {
+      return 2;
+    }
     return 1;
   }
 
-  /* GET /config?ssid=...&pwd=... -> 鎻愬彇閰嶇疆 */
-  if (strncmp(get, "/config?", 8) == 0) {
-    const char *query = get + 7; /* 鎸囧悜 '?' */
-
-    if (out_ssid && extract_param(query, "ssid", out_ssid, 33)) {
-      if (out_pwd && extract_param(query, "pwd", out_pwd, 65)) {
-        return 2;
-      }
-    }
+ /* / , /foo, /hotspot-detect.html and other GET paths -> config homepage */
+  if (path[0] == '/') {
+    return 1;
   }
 
   return 0;
@@ -980,7 +1238,7 @@ void aqua_mqtt_notify_wifi_changed(MqttClient *mqtt) {
   if (!mqtt)
     return;
   mqtt->wifi_changed = true;
-  /* 濡傛灉鍦?ERROR 鐘舵€侊紝绔嬪嵆閲嶇疆閫€閬胯鏃跺櫒 */
+ /* ERROR */
   mqtt->error_time_ms = 0;
   mqtt->reconnect_delay_ms = RECONNECT_DELAY_INIT_MS;
 }
@@ -990,9 +1248,9 @@ int aqua_mqtt_get_net_status(const MqttClient *mqtt) {
     return 0;
   switch (mqtt->state) {
   case MQTT_STATE_ONLINE:
-    return 2; /* 鍦ㄧ嚎 */
+ return 2; /* */
   case MQTT_STATE_ERROR:
-    return 0; /* 绂荤嚎/閿欒 */
+ return 0; /* / */
   case MQTT_STATE_AP_START:
   case MQTT_STATE_AP_CIPMUX:
   case MQTT_STATE_AP_CIPDINFO:
@@ -1002,8 +1260,8 @@ int aqua_mqtt_get_net_status(const MqttClient *mqtt) {
   case MQTT_STATE_AP_SEND_DATA:
   case MQTT_STATE_AP_CLOSE:
   case MQTT_STATE_AP_STOP:
-    return 3; /* AP 閰嶇綉涓?*/
+ return 3; /* AP */
   default:
-    return 1; /* 杩炴帴涓?*/
+ return 1; /* */
   }
 }

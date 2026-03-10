@@ -4,6 +4,7 @@ import {
   IOTDA_COMMAND_NAME_CONTROL,
   IOTDA_COMMAND_NAME_SET_CONFIG,
   IOTDA_COMMAND_NAME_SET_THRESHOLDS,
+  IOTDA_DEFAULTS,
   IOTDA_SERVICE_ID_CONFIG,
   IOTDA_SERVICE_ID_CONTROL,
   IOTDA_SERVICE_ID_THRESHOLD,
@@ -27,8 +28,15 @@ export interface IotdaCredentials {
 
 export interface IotdaClientConfig {
   baseUrl: string;
+  region: string;
+  instanceId: string;
   projectId: string;
   deviceId: string;
+}
+
+interface PathWithQuery {
+  canonicalUri: string;
+  canonicalQueryString: string;
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -44,6 +52,17 @@ function extractHost(baseUrl: string): string {
   const noProto = trimmed.replace(/^https?:\/\//, '');
   const slashIdx = noProto.indexOf('/');
   return slashIdx >= 0 ? noProto.slice(0, slashIdx) : noProto;
+}
+
+function splitPathAndQuery(path: string): PathWithQuery {
+  const idx = path.indexOf('?');
+  if (idx < 0) {
+    return { canonicalUri: path, canonicalQueryString: '' };
+  }
+  return {
+    canonicalUri: path.slice(0, idx),
+    canonicalQueryString: path.slice(idx + 1),
+  };
 }
 
 function jsonStringifySafe(data: unknown): string {
@@ -71,7 +90,12 @@ export class IotdaRestClient {
   private readonly host: string;
 
   constructor(cfg: IotdaClientConfig, cred: IotdaCredentials) {
-    this.cfg = { ...cfg, baseUrl: normalizeBaseUrl(cfg.baseUrl) };
+    this.cfg = {
+      ...cfg,
+      baseUrl: normalizeBaseUrl(cfg.baseUrl),
+      region: cfg.region || IOTDA_DEFAULTS.region,
+      instanceId: cfg.instanceId || IOTDA_DEFAULTS.instanceId,
+    };
     this.cred = cred;
     this.host = extractHost(this.cfg.baseUrl);
   }
@@ -137,14 +161,17 @@ export class IotdaRestClient {
     timeoutMs: number
   ): Promise<any> {
     const url = `${this.cfg.baseUrl}${path}`;
+    const canonical = splitPathAndQuery(path);
     const xSdkDate = buildXSdkDate(new Date());
     const contentType = body ? 'application/json' : undefined;
     const bodyText = body ? jsonStringifySafe(body) : '';
 
     const authorization = await buildAuthorization({
       method,
-      canonicalUri: path,
-      canonicalQueryString: '',
+      canonicalUri: canonical.canonicalUri,
+      canonicalQueryString: canonical.canonicalQueryString,
+      region: this.cfg.region,
+      instanceId: this.cfg.instanceId,
       host: this.host,
       xSdkDate,
       contentType,
@@ -155,6 +182,7 @@ export class IotdaRestClient {
 
     const headers: Record<string, string> = {
       'X-Sdk-Date': xSdkDate,
+      'Instance-Id': this.cfg.instanceId,
       Authorization: authorization,
       Accept: 'application/json',
     };

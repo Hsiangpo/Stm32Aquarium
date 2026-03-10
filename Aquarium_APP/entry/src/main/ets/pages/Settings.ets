@@ -10,17 +10,6 @@ import { AnimButton } from '../components/AnimButton';
 @Entry
 @Component
 struct Settings {
-  @State baseUrl: string = IOTDA_DEFAULTS.baseUrl;
-  @State projectId: string = IOTDA_DEFAULTS.projectId;
-  @State deviceId: string = IOTDA_DEFAULTS.deviceId;
-
-  @State ak: string = IOTDA_DEFAULTS.ak;
-  @State sk: string = IOTDA_DEFAULTS.sk;
-  @State saveCredentials: boolean = false;
-
-  @State deviceSecret: string = IOTDA_DEFAULTS.deviceSecret;
-  @State saveDeviceSecret: boolean = false;
-
   @State autoRefreshEnabled: boolean = true;
   @State alarmNotifyEnabled: boolean = true;
   @State distributedSyncEnabled: boolean = false;
@@ -33,28 +22,12 @@ struct Settings {
     this.restore();
   }
 
-  private applyHardcodedDefaults(): void {
-    this.baseUrl = IOTDA_DEFAULTS.baseUrl;
-    this.projectId = IOTDA_DEFAULTS.projectId;
-    this.deviceId = IOTDA_DEFAULTS.deviceId;
-    this.ak = IOTDA_DEFAULTS.ak;
-    this.sk = IOTDA_DEFAULTS.sk;
-    this.deviceSecret = IOTDA_DEFAULTS.deviceSecret;
-  }
-
   private restore(): void {
     loadAppSettings()
       .then((saved) => {
-        if (typeof saved.saveCredentials === 'boolean') this.saveCredentials = saved.saveCredentials;
-        if (typeof saved.saveDeviceSecret === 'boolean') this.saveDeviceSecret = saved.saveDeviceSecret;
         if (typeof saved.autoRefreshEnabled === 'boolean') this.autoRefreshEnabled = saved.autoRefreshEnabled;
         if (typeof saved.alarmNotifyEnabled === 'boolean') this.alarmNotifyEnabled = saved.alarmNotifyEnabled;
         if (typeof saved.distributedSyncEnabled === 'boolean') this.distributedSyncEnabled = saved.distributedSyncEnabled;
-
-        if (saved.ak) this.ak = saved.ak;
-        if (saved.sk) this.sk = saved.sk;
-        if (saved.deviceSecret) this.deviceSecret = saved.deviceSecret;
-        this.applyHardcodedDefaults();
 
         this.noticeText = '';
         this.noticeIsError = false;
@@ -78,32 +51,33 @@ struct Settings {
     if (this.isSaving) {
       return;
     }
+
     this.isSaving = true;
     this.noticeText = '';
     this.noticeIsError = false;
+
     try {
-      this.applyHardcodedDefaults();
       const settings: AppSettings = {
-        baseUrl: this.baseUrl.trim(),
-        projectId: this.projectId.trim(),
-        deviceId: this.deviceId.trim(),
-        saveCredentials: this.saveCredentials,
-        saveDeviceSecret: this.saveDeviceSecret,
+        baseUrl: IOTDA_DEFAULTS.baseUrl,
+        projectId: IOTDA_DEFAULTS.projectId,
+        deviceId: IOTDA_DEFAULTS.deviceId,
+        saveCredentials: false,
+        saveDeviceSecret: false,
         autoRefreshEnabled: this.autoRefreshEnabled,
         alarmNotifyEnabled: this.alarmNotifyEnabled,
         distributedSyncEnabled: this.distributedSyncEnabled,
-        ak: this.ak.trim(),
-        sk: this.sk.trim(),
-        deviceSecret: this.deviceSecret,
+        ak: IOTDA_DEFAULTS.ak,
+        sk: IOTDA_DEFAULTS.sk,
+        deviceSecret: IOTDA_DEFAULTS.deviceSecret,
       };
 
       await saveAppSettings(settings);
-      await this.toast('已保存');
+      await this.toast('Saved');
       router.back();
     } catch (e) {
       this.noticeText = e?.message ?? String(e);
       this.noticeIsError = true;
-      await this.toast('保存失败');
+      await this.toast('Save failed');
     } finally {
       this.isSaving = false;
     }
@@ -154,38 +128,55 @@ struct Settings {
     .border({ width: { bottom: 1 }, color: '#F5F5F5' });
   }
 
+  @Builder
+  private InfoRow(label: string, value: string) {
+    Row({ space: 12 }) {
+      Text(label)
+        .fontSize(13)
+        .fontColor('#666666')
+        .layoutWeight(1);
+      Text(value)
+        .fontSize(13)
+        .fontColor('#111111')
+        .fontWeight(FontWeight.Medium)
+        .textAlign(TextAlign.End);
+    }
+    .width('100%')
+    .padding({ top: 10, bottom: 10 })
+    .border({ width: { bottom: 1 }, color: '#F5F5F5' });
+  }
+
   build() {
     Stack() {
-      WarmBackground()
+      WarmBackground();
 
       Column({ space: 16 }) {
-        // Header
         Column() {
           GlassCard() {
             Row({ space: 12 }) {
-              AnimButton({ text: '返回', primary: false, isEnabled: true })
+              AnimButton({ text: 'Back', primary: false, isEnabled: true })
                 .width(72)
-                .onClick(() => this.back())
-              
-              Text('设置')
+                .onClick(() => this.back());
+
+              Text('Settings')
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 .layoutWeight(1)
-                .textAlign(TextAlign.Center)
-              
-              AnimButton({ text: this.isSaving ? '...' : '保存', primary: true, isEnabled: !this.isSaving })
+                .textAlign(TextAlign.Center);
+
+              AnimButton({ text: this.isSaving ? '...' : 'Save', primary: true, isEnabled: !this.isSaving })
                 .width(72)
                 .onClick(() => {
                   this.saveAndBack().catch(() => {
                     // ignore
                   });
-                })
+                });
             }
-            .alignItems(VerticalAlign.Center)
+            .alignItems(VerticalAlign.Center);
           }
         }
-        .margin({ top: 12, left: 12, right: 12 })
+        .margin({ top: 12, left: 12, right: 12 });
 
         if (this.noticeText) {
           Column() {
@@ -193,50 +184,50 @@ struct Settings {
               Text(this.noticeText)
                 .fontSize(13)
                 .fontColor(this.noticeIsError ? UiConstants.COLOR_DANGER : UiConstants.COLOR_PRIMARY)
-                .width('100%')
+                .width('100%');
             }
           }
-          .margin({ left: 12, right: 12 })
+          .margin({ left: 12, right: 12 });
         }
 
         Scroll() {
           Column({ space: 16 }) {
             GlassCard() {
               Column({ space: 8 }) {
-                this.SectionTitle('连接参数')
-                Text('演示模式：华为云区域/端点/设备ID/密钥均为内置固定值，前端不提供配置入口。')
+                this.SectionTitle('Connection');
+                Text('Connection parameters are hardcoded in demo mode and cannot be edited in UI.')
                   .fontSize(12)
-                  .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
-                  .width('100%')
-                  .lineHeight(20)
+                  .fontColor('#666666')
+                  .width('100%');
+                this.InfoRow('Base URL', IOTDA_DEFAULTS.baseUrl);
+                this.InfoRow('Project ID', IOTDA_DEFAULTS.projectId);
+                this.InfoRow('Device ID', IOTDA_DEFAULTS.deviceId);
               }
             }
 
             GlassCard() {
               Column({ space: 8 }) {
-                this.SectionTitle('行为与偏好')
-                this.ToggleRow('自动刷新 (30s/次)', this.autoRefreshEnabled, (v) => (this.autoRefreshEnabled = v))
-                this.ToggleRow('告警通知 (系统通知)', this.alarmNotifyEnabled, (v) => (this.alarmNotifyEnabled = v))
-                this.ToggleRow('分布式同步 (多设备)', this.distributedSyncEnabled, (v) => (this.distributedSyncEnabled = v))
+                this.SectionTitle('Behavior');
+                this.ToggleRow('Auto refresh (30s)', this.autoRefreshEnabled, (v) => (this.autoRefreshEnabled = v));
+                this.ToggleRow('Alarm notifications', this.alarmNotifyEnabled, (v) => (this.alarmNotifyEnabled = v));
+                this.ToggleRow('Distributed sync', this.distributedSyncEnabled, (v) => (this.distributedSyncEnabled = v));
               }
             }
 
             GlassCard() {
               Column({ space: 8 }) {
-                this.SectionTitle('帮助')
-                AnimButton({ text: '查看关于 / 使用说明', primary: false })
-                  .onClick(() => this.openAbout())
+                this.SectionTitle('Help');
+                AnimButton({ text: 'About', primary: false })
+                  .onClick(() => this.openAbout());
               }
             }
           }
-          .padding({ top: 4, bottom: 32, left: 12, right: 12 })
+          .padding({ top: 4, bottom: 32, left: 12, right: 12 });
         }
-        .layoutWeight(1)
+        .layoutWeight(1);
       }
     }
     .width('100%')
-    .height('100%')
+    .height('100%');
   }
 }
-
-

@@ -11,6 +11,7 @@ PetHome_APP/
 **/oh_modules/
 **/local.properties
 **/.idea/
+**/.vscode/
 **/build/
 **/.hvigor/
 **/.cxx/
@@ -43,3 +44,10 @@ _tmp_*
 Thumbs.db
 desktop.ini
 skill_urls.txt
+Aquarium_Device/.pio_build_verbose.log
+Aquarium_Device/*.bin
+Aquarium_Device/tmp_*.txt
+task_plan.md
+findings.md
+progress.md
+docs/plans/

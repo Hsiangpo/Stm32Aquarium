@@ -76,7 +76,8 @@ export interface ThresholdCommandParas {
   level_min?: number;
   level_max?: number;
   feed_interval?: number;
-  feed_amount?: number;
+  feed_amount?: number | string;
+  target_temp?: number;
 }
 
 export interface ConfigCommandParas {

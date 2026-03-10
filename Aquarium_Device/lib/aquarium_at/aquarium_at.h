@@ -30,7 +30,7 @@ extern "C" {
 #endif
 
 #ifndef AT_LINE_MAX_LEN
-#define AT_LINE_MAX_LEN 512 /* 需足够容纳 MQTT 下行 JSON（如 +MQTTSUBRECV） */
+#define AT_LINE_MAX_LEN 768 /* 适当放宽，降低大 JSON 下行被截断概率 */
 #endif
 
 #ifndef AT_URC_QUEUE_SIZE

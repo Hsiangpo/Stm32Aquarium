@@ -286,6 +286,58 @@ void test_urc_queue_overflow(void) {
   TEST_ASSERT_EQUAL_STRING("URC2", line.data);
 }
 
+void test_urc_queue_overflow_preserves_ipd_line(void) {
+  AtClient client;
+  aqua_at_init(&client, mock_write, mock_now_ms);
+
+  const char *ipd = "+IPD,0,18:GET / HTTP/1.1\r\n";
+  aqua_at_feed_rx(&client, (const uint8_t *)ipd, strlen(ipd));
+
+  for (int i = 0; i < AT_URC_QUEUE_SIZE + 4; i++) {
+    char line[48];
+    snprintf(line, sizeof(line), "Header-%d: value\r\n", i);
+    aqua_at_feed_rx(&client, (const uint8_t *)line, strlen(line));
+  }
+
+  bool found_ipd = false;
+  AtLine line;
+  while (aqua_at_pop_line(&client, &line) == AT_OK) {
+    if (strncmp(line.data, "+IPD,", 5) == 0) {
+      found_ipd = true;
+    }
+  }
+
+  TEST_ASSERT_TRUE(found_ipd);
+}
+
+void test_urc_queue_overflow_preserves_mqttpub_result_line(void) {
+  AtClient client;
+  aqua_at_init(&client, mock_write, mock_now_ms);
+
+  const char *subrecv = "+MQTTSUBRECV:0,\"topic\",2,{}\r\n";
+  aqua_at_feed_rx(&client, (const uint8_t *)subrecv, strlen(subrecv));
+
+  for (int i = 0; i < AT_URC_QUEUE_SIZE - 1; i++) {
+    char line[32];
+    snprintf(line, sizeof(line), "Noise-%d\r\n", i);
+    aqua_at_feed_rx(&client, (const uint8_t *)line, strlen(line));
+  }
+
+  const char *pub_ok = "+MQTTPUB:OK\r\n";
+  aqua_at_feed_rx(&client, (const uint8_t *)pub_ok, strlen(pub_ok));
+
+  bool found_pub_ok = false;
+  AtLine line;
+  while (aqua_at_pop_line(&client, &line) == AT_OK) {
+    if (strcmp(line.data, "+MQTTPUB:OK") == 0) {
+      found_pub_ok = true;
+      break;
+    }
+  }
+
+  TEST_ASSERT_TRUE(found_pub_ok);
+}
+
 void test_pop_line_empty_queue(void) {
   AtClient client;
   aqua_at_init(&client, mock_write, mock_now_ms);
@@ -359,6 +411,8 @@ int main(void) {
 
   /* URC 队列测试 */
   RUN_TEST(test_urc_queue_overflow);
+  RUN_TEST(test_urc_queue_overflow_preserves_ipd_line);
+  RUN_TEST(test_urc_queue_overflow_preserves_mqttpub_result_line);
   RUN_TEST(test_pop_line_empty_queue);
 
   /* 行过长测试 */

@@ -223,7 +223,8 @@ void test_parse_threshold_command(void) {
                      "\"level_min\":20,"
                      "\"level_max\":95,"
                      "\"feed_interval\":12,"
-                     "\"feed_amount\":2"
+                     "\"feed_amount\":\"2\","
+                     "\"target_temp\":26.5"
                      "}"
                      "}";
 
@@ -241,6 +242,10 @@ void test_parse_threshold_command(void) {
   TEST_ASSERT_EQUAL(500, cmd.params.threshold.tds_warn);
   TEST_ASSERT_TRUE(cmd.params.threshold.has_feed_interval);
   TEST_ASSERT_EQUAL(12, cmd.params.threshold.feed_interval);
+  TEST_ASSERT_TRUE(cmd.params.threshold.has_feed_amount);
+  TEST_ASSERT_EQUAL(2, cmd.params.threshold.feed_amount);
+  TEST_ASSERT_TRUE(cmd.params.threshold.has_target_temp);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 26.5f, cmd.params.threshold.target_temp);
 }
 
 /* ============================================================================
@@ -274,6 +279,27 @@ void test_parse_config_command(void) {
   TEST_ASSERT_EQUAL_STRING("password123", cmd.params.config.wifi_password);
   TEST_ASSERT_TRUE(cmd.params.config.has_ph_offset);
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.15f, cmd.params.config.ph_offset);
+}
+
+void test_parse_config_command_with_escaped_strings(void) {
+  const char *json = "{"
+                     "\"service_id\":\"aquariumConfig\","
+                     "\"command_name\":\"set_config\","
+                     "\"paras\":{"
+                     "\"wifi_ssid\":\"My\\\\\\\"WiFi\\\\\\\\Lab\","
+                     "\"wifi_password\":\"Pa\\\\\\\\ss\\\\\\\"word\""
+                     "}"
+                     "}";
+
+  ParsedCommand cmd;
+  AquaError err = aqua_parse_command_json(json, strlen(json), &cmd);
+
+  TEST_ASSERT_EQUAL(AQUA_OK, err);
+  TEST_ASSERT_EQUAL(COMMAND_TYPE_SET_CONFIG, cmd.type);
+  TEST_ASSERT_TRUE(cmd.params.config.has_wifi_ssid);
+  TEST_ASSERT_TRUE(cmd.params.config.has_wifi_password);
+  TEST_ASSERT_EQUAL_STRING("My\\\"WiFi\\\\Lab", cmd.params.config.wifi_ssid);
+  TEST_ASSERT_EQUAL_STRING("Pa\\\\ss\\\"word", cmd.params.config.wifi_password);
 }
 
 /* ============================================================================
@@ -356,6 +382,7 @@ int main(void) {
   RUN_TEST(test_parse_control_command);
   RUN_TEST(test_parse_threshold_command);
   RUN_TEST(test_parse_config_command);
+  RUN_TEST(test_parse_config_command_with_escaped_strings);
 
   /* Topic 测试 */
   RUN_TEST(test_extract_request_id);

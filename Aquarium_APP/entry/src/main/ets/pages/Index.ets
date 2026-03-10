@@ -61,9 +61,6 @@ interface RefreshShadowOptions {
 
 interface SharedSettingsPayload {
   updatedAt: string;
-  baseUrl: string;
-  projectId: string;
-  deviceId: string;
   autoRefreshEnabled: boolean;
   alarmNotifyEnabled: boolean;
 }
@@ -117,6 +114,9 @@ interface ParseFail {
 }
 
 type ParseResult<T> = ParseOk<T> | ParseFail;
+
+const TARGET_TEMP_MIN = 0.0;
+const TARGET_TEMP_MAX = 40.0;
 
 interface ExperimentRecordDevice {
   baseUrl: string;
@@ -288,6 +288,8 @@ struct Index {
     return new IotdaRestClient(
       {
         baseUrl: this.baseUrl,
+        region: IOTDA_DEFAULTS.region,
+        instanceId: IOTDA_DEFAULTS.instanceId,
         projectId: this.projectId,
         deviceId: this.deviceId,
       },
@@ -408,22 +410,6 @@ struct Index {
 
   private async restoreAppSettings(): Promise<void> {
     const saved = await loadAppSettings();
-
-    if (typeof saved.saveCredentials === 'boolean') {
-      this.saveCredentials = saved.saveCredentials;
-    }
-    if (this.saveCredentials) {
-      if (saved.ak) this.ak = saved.ak;
-      if (saved.sk) this.sk = saved.sk;
-    }
-
-    if (typeof saved.saveDeviceSecret === 'boolean') {
-      this.saveDeviceSecret = saved.saveDeviceSecret;
-    }
-    if (this.saveDeviceSecret) {
-      if (saved.deviceSecret) this.deviceSecret = saved.deviceSecret;
-    }
-
     this.applyHardcodedDefaults();
 
     if (typeof saved.autoRefreshEnabled === 'boolean') {
@@ -440,17 +426,17 @@ struct Index {
   private async persistAppSettings(): Promise<void> {
     this.applyHardcodedDefaults();
     await saveAppSettings({
-      baseUrl: this.baseUrl.trim(),
-      projectId: this.projectId.trim(),
-      deviceId: this.deviceId.trim(),
-      saveCredentials: this.saveCredentials,
-      saveDeviceSecret: this.saveDeviceSecret,
+      baseUrl: this.baseUrl,
+      projectId: this.projectId,
+      deviceId: this.deviceId,
+      saveCredentials: false,
+      saveDeviceSecret: false,
       autoRefreshEnabled: this.autoRefreshEnabled,
       alarmNotifyEnabled: this.alarmNotifyEnabled,
       distributedSyncEnabled: this.distributedSyncEnabled,
-      ak: this.ak.trim(),
-      sk: this.sk.trim(),
-      deviceSecret: this.deviceSecret.trim(),
+      ak: this.ak,
+      sk: this.sk,
+      deviceSecret: this.deviceSecret,
     });
 
     if (this.distributedSyncEnabled) {
@@ -465,9 +451,15 @@ struct Index {
     if (!params) {
       return;
     }
-    void params;
+    if (typeof params.autoRefreshEnabled === 'boolean') {
+      this.autoRefreshEnabled = params.autoRefreshEnabled;
+    }
+    if (typeof params.alarmNotifyEnabled === 'boolean') {
+      this.alarmNotifyEnabled = params.alarmNotifyEnabled;
+    }
     this.applyHardcodedDefaults();
-    this.setInfo('已收到流转参数；演示模式下连接参数固定为内置值');
+    this.updateAutoRefreshTimer();
+    this.setInfo('Applied distributed behavior settings');
   }
 
   private syncSessionSecrets(): void {
@@ -481,6 +473,8 @@ struct Index {
     this.ak = IOTDA_DEFAULTS.ak;
     this.sk = IOTDA_DEFAULTS.sk;
     this.deviceSecret = IOTDA_DEFAULTS.deviceSecret;
+    this.saveCredentials = false;
+    this.saveDeviceSecret = false;
   }
 
   private updateDistributedSyncSubscription(): void {
@@ -514,16 +508,13 @@ struct Index {
       this.alarmNotifyEnabled = !!s.alarmNotifyEnabled;
       this.applyHardcodedDefaults();
       this.updateAutoRefreshTimer();
-      this.setInfo(`收到分布式同步更新（${s.updatedAt || 'unknown'}）`);
+      this.setInfo(`Received distributed sync update (${s.updatedAt || 'unknown'})`);
     });
   }
 
   private buildSharedSettingsPayload(): SharedSettingsPayload {
     return {
       updatedAt: this.formatLocalDateTime(new Date()),
-      baseUrl: this.baseUrl.trim(),
-      projectId: this.projectId.trim(),
-      deviceId: this.deviceId.trim(),
       autoRefreshEnabled: this.autoRefreshEnabled,
       alarmNotifyEnabled: this.alarmNotifyEnabled,
     };
@@ -531,9 +522,6 @@ struct Index {
 
   private async publishDistributedSettings(): Promise<void> {
     const payload = this.buildSharedSettingsPayload();
-    if (!payload.baseUrl || !payload.projectId || !payload.deviceId) {
-      throw new Error('分布式同步参数缺失，请检查内置配置');
-    }
     await publishSharedSettings(payload);
     await this.showToast('已发布到分布式同步（同账号设备可拉取）');
   }
@@ -597,9 +585,6 @@ struct Index {
     }
 
     const payload = this.buildSharedSettingsPayload();
-    if (!payload.baseUrl || !payload.projectId || !payload.deviceId) {
-      throw new Error('流转参数缺失，请检查内置配置');
-    }
     await startRemoteFlow(picked.deviceId, payload);
     await this.showToast(`已发起流转：${picked.deviceName || picked.deviceId}`);
   }
@@ -1427,7 +1412,7 @@ struct Index {
       level_min: levelMin,
       level_max: levelMax,
       feed_interval: feedInterval,
-      feed_amount: feedAmount,
+      feed_amount: `${feedAmount}`,
     };
 
     return { ok: true, paras };
@@ -1530,6 +1515,10 @@ struct Index {
     const targetTemp = this.parseNumber(this.ctl_target_temp);
     if (targetTemp === undefined) {
       this.setError('target_temp 请输入有效数字，例如 26 或 26.5');
+      return;
+    }
+    if (!this.inRange(targetTemp, TARGET_TEMP_MIN, TARGET_TEMP_MAX)) {
+      this.setError(`target_temp must be within ${TARGET_TEMP_MIN}~${TARGET_TEMP_MAX}`);
       return;
     }
 

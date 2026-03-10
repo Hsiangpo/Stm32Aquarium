@@ -7,8 +7,8 @@
 #define SECRETS_H
 
 /* WiFi 配置（按现场路由修改） */
-#define WIFI_SSID "YourWiFiSSID"
-#define WIFI_PASSWORD "YourWiFiPassword"
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 
 /* 华为云 IoTDA 配置 */
 #define IOTDA_HOST "8cee850016.st1.iotda-device.cn-north-4.myhuaweicloud.com"

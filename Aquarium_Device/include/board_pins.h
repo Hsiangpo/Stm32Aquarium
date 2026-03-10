@@ -34,8 +34,8 @@
 #define PIN_RELAY_HEATER_PIN    GPIO_PIN_10 // D6 -> PB10
 
 // Buzzer + LED
-#define PIN_BUZZER_GPIO GPIOA
-#define PIN_BUZZER_PIN  GPIO_PIN_9 // D8 -> PA9
+#define PIN_BUZZER_GPIO GPIOC
+#define PIN_BUZZER_PIN  GPIO_PIN_2 // moved from PA9 to avoid UART conflict
 
 #define PIN_LED_GPIO GPIOA
 #define PIN_LED_PIN  GPIO_PIN_5 // D13 -> PA5 (LD2)
@@ -45,16 +45,17 @@
 #define PIN_SERVO_PIN  GPIO_PIN_7
 
 // === ESP32 AT (UART) ===
-// Wiring guide uses USART2 on PA2/PA3 (Arduino D1/D0).
-// On NUCLEO boards those pins may be tied to ST-LINK VCP by default; if you connect ESP32,
-// detach the ST-LINK VCP jumpers to avoid bus contention.
-#define ESP32_UART_INSTANCE USART2
-#define PIN_ESP32_TX_GPIO   GPIOA
-#define PIN_ESP32_TX_PIN    GPIO_PIN_2
-#define PIN_ESP32_RX_GPIO   GPIOA
-#define PIN_ESP32_RX_PIN    GPIO_PIN_3
+// Use USART1 on PA9/PA10 to avoid ST-LINK VCP contention on PA2/PA3.
+#define ESP32_UART_INSTANCE      USART1
+#define ESP32_UART_IRQn          USART1_IRQn
+#define ESP32_UART_IRQ_HANDLER   USART1_IRQHandler
+#define ESP32_UART_RCC_ENABLE()  __HAL_RCC_USART1_CLK_ENABLE()
+#define PIN_ESP32_TX_GPIO        GPIOA
+#define PIN_ESP32_TX_PIN         GPIO_PIN_9  // STM32 TX  -> ESP32 RX(GPIO16)
+#define PIN_ESP32_RX_GPIO        GPIOA
+#define PIN_ESP32_RX_PIN         GPIO_PIN_10 // STM32 RX  <- ESP32 TX(GPIO17)
 
-// Optional reset pin (if wired): PC2
+// Optional reset pin (if wired): PC3
 #define PIN_ESP32_RST_GPIO GPIOC
-#define PIN_ESP32_RST_PIN  GPIO_PIN_2
+#define PIN_ESP32_RST_PIN  GPIO_PIN_3
 

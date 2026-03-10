@@ -19,9 +19,44 @@ static bool is_final_error(const char *line) {
          (strncmp(line, "+CMS ERROR:", 11) == 0);
 }
 
+static bool is_priority_urc(const char *line, size_t len) {
+  if (!line || len == 0) {
+    return false;
+  }
+
+  if (len >= 5 && strncmp(line, "+IPD,", 5) == 0) {
+    return true;
+  }
+  if (len >= 12 && strncmp(line, "+MQTTSUBRECV:", 12) == 0) {
+    return true;
+  }
+  if (len >= 9 && strncmp(line, "+MQTTPUB:", 9) == 0) {
+    return true;
+  }
+  if (strcmp(line, "SEND OK") == 0 || strcmp(line, "SEND FAIL") == 0) {
+    return true;
+  }
+
+  return false;
+}
+
 static void push_urc(AtClient *client, const char *line, size_t len) {
   if (client->urc_count >= AT_URC_QUEUE_SIZE) {
-    /* URC 队列满，丢弃最旧的 */
+    /*
+     * URC 队列满时保护高优先级事件（如 +IPD / SEND OK）：
+     * - 若最旧元素是高优先级且新元素不是，则丢弃新元素，避免 HTTP 请求头把 +IPD 挤掉。
+     * - 其他情况保持原策略，丢弃最旧元素。
+     */
+    size_t oldest_idx = client->urc_tail;
+    AtLine *oldest = &client->urc_queue[oldest_idx];
+    bool oldest_priority = oldest->valid &&
+                           is_priority_urc(oldest->data, oldest->len);
+    bool incoming_priority = is_priority_urc(line, len);
+
+    if (oldest_priority && !incoming_priority) {
+      return;
+    }
+
     client->urc_tail = (client->urc_tail + 1) % AT_URC_QUEUE_SIZE;
     client->urc_count--;
   }

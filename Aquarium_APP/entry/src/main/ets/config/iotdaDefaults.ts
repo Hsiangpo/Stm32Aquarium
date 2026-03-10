@@ -1,10 +1,12 @@
 export const IOTDA_DEFAULTS = {
-  // 单人课设演示：连接参数固定内置
+  // Demo mode: connection parameters are fixed and built-in.
   baseUrl: 'https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com',
+  region: 'cn-north-4',
+  instanceId: '8145412f-8cb1-46a1-8755-d692c4dc1b65',
   projectId: '79d1f76b8f0e47fd934f3eb393bf2e7f',
   deviceId: '690237639798273cc4fd09cb_MyAquarium_01',
-  ak: 'HPUA4JX3YFP88FSKLZ8N',
-  sk: 'vZ2ggGBLX6ekyeZWDxopQM9J5DXmMSbUI5JNfgDg',
+  ak: 'HPUAXBOD7O94OFVQKNST',
+  sk: 'ai2ept3hXzrYJF8eifMBCQ9udBli9K8X5lL3dSCY',
   deviceSecret: 'z748464wo946',
   deviceMqttHost: '8cee850016.st1.iotda-device.cn-north-4.myhuaweicloud.com',
   deviceMqttPort: 1883,
@@ -17,5 +19,3 @@ export const IOTDA_SERVICE_ID_CONFIG = 'aquariumConfig';
 export const IOTDA_COMMAND_NAME_CONTROL = 'control';
 export const IOTDA_COMMAND_NAME_SET_THRESHOLDS = 'set_thresholds';
 export const IOTDA_COMMAND_NAME_SET_CONFIG = 'set_config';
-
-

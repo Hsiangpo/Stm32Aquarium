@@ -136,31 +136,31 @@ void test_turbidity_monotonic(void) {
  */
 
 void test_water_level_empty(void) {
-  /* 0.5V（空）应返回 0% */
-  float level = aqua_sensor_water_level_from_voltage(0.5f);
+  /* 0.0V（空，现场标定）应返回 0% */
+  float level = aqua_sensor_water_level_from_voltage(0.0f);
   TEST_ASSERT_FLOAT_WITHIN(1.0f, 0.0f, level);
 }
 
 void test_water_level_full(void) {
-  /* 3.0V（满）应返回 100% */
-  float level = aqua_sensor_water_level_from_voltage(3.0f);
+  /* 1.35V（满，现场标定）应返回 100% */
+  float level = aqua_sensor_water_level_from_voltage(1.35f);
   TEST_ASSERT_FLOAT_WITHIN(1.0f, 100.0f, level);
 }
 
 void test_water_level_half(void) {
-  /* 1.75V 应返回 50% */
-  float level = aqua_sensor_water_level_from_voltage(1.75f);
-  TEST_ASSERT_FLOAT_WITHIN(2.0f, 50.0f, level);
+  /* 0.675V（raw=50%）在分段校正后应约 31.25% */
+  float level = aqua_sensor_water_level_from_voltage(0.675f);
+  TEST_ASSERT_FLOAT_WITHIN(2.0f, 31.25f, level);
 }
 
 void test_water_level_clamp_low(void) {
-  /* 低于 0.5V 应返回 0% */
-  float level = aqua_sensor_water_level_from_voltage(0.0f);
+  /* 低于 0.0V 应返回 0% */
+  float level = aqua_sensor_water_level_from_voltage(-0.5f);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, level);
 }
 
 void test_water_level_clamp_high(void) {
-  /* 高于 3.0V 应返回 100% */
+  /* 高于满量程应返回 100% */
   float level = aqua_sensor_water_level_from_voltage(5.0f);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 100.0f, level);
 }
@@ -169,6 +169,12 @@ void test_water_level_from_adc(void) {
   /* 测试便捷函数 */
   float level = aqua_sensor_water_level_from_adc(2048);
   TEST_ASSERT_TRUE(level >= 0.0f && level <= 100.0f);
+}
+
+void test_water_level_mid_anchor(void) {
+  /* raw=80% 对应电压 1.08V，校正后应接近 50% */
+  float level = aqua_sensor_water_level_from_voltage(1.08f);
+  TEST_ASSERT_FLOAT_WITHIN(2.0f, 50.0f, level);
 }
 
 /* ============================================================================
@@ -230,6 +236,7 @@ int main(void) {
   RUN_TEST(test_water_level_clamp_low);
   RUN_TEST(test_water_level_clamp_high);
   RUN_TEST(test_water_level_from_adc);
+  RUN_TEST(test_water_level_mid_anchor);
 
   /* clamp */
   RUN_TEST(test_clamp_within_range);

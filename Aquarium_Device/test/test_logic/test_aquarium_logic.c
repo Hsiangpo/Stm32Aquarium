@@ -364,6 +364,21 @@ void test_apply_control_command(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.1f, 28.0f, state.target_temp);
 }
 
+void test_apply_control_command_rejects_target_temp_out_of_range(void) {
+  AquariumState state;
+  aqua_logic_init(&state);
+
+  ParsedCommand cmd = {0};
+  cmd.type = COMMAND_TYPE_CONTROL;
+  cmd.params.control.has_target_temp = true;
+  cmd.params.control.target_temp = 100.0f;
+
+  AquaError err = aqua_logic_apply_command(&state, &cmd);
+
+  TEST_ASSERT_EQUAL(AQUA_ERR_INVALID_COMMAND, err);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, DEFAULT_TARGET_TEMP, state.target_temp);
+}
+
 /* ============================================================================
  * 测试：命令应用 - threshold
  * ============================================================================
@@ -379,12 +394,15 @@ void test_apply_threshold_command(void) {
   cmd.params.threshold.temp_min = 22.0f;
   cmd.params.threshold.has_feed_interval = true;
   cmd.params.threshold.feed_interval = 6;
+  cmd.params.threshold.has_target_temp = true;
+  cmd.params.threshold.target_temp = 27.0f;
 
   AquaError err = aqua_logic_apply_command(&state, &cmd);
 
   TEST_ASSERT_EQUAL(AQUA_OK, err);
   TEST_ASSERT_FLOAT_WITHIN(0.1f, 22.0f, state.thresholds.temp_min);
   TEST_ASSERT_EQUAL(6, state.thresholds.feed_interval);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 27.0f, state.target_temp);
   TEST_ASSERT_EQUAL(6 * 3600, state.feed_timer); /* 重置投喂计时器 */
 }
 
@@ -401,6 +419,8 @@ void test_apply_config_command(void) {
   cmd.type = COMMAND_TYPE_SET_CONFIG;
   cmd.params.config.has_wifi_ssid = true;
   strcpy(cmd.params.config.wifi_ssid, "TestWiFi");
+  cmd.params.config.has_wifi_password = true;
+  strcpy(cmd.params.config.wifi_password, "TestPass123");
   cmd.params.config.has_ph_offset = true;
   cmd.params.config.ph_offset = 0.5f;
 
@@ -415,6 +435,85 @@ void test_apply_config_command(void) {
  * 测试：立即投喂命令
  * ============================================================================
  */
+
+void test_apply_threshold_command_rejects_out_of_range(void) {
+  AquariumState state;
+  aqua_logic_init(&state);
+
+  ParsedCommand cmd = {0};
+  cmd.type = COMMAND_TYPE_SET_THRESHOLDS;
+  cmd.params.threshold.has_temp_min = true;
+  cmd.params.threshold.temp_min = 130.0f; /* > 125 */
+
+  AquaError err = aqua_logic_apply_command(&state, &cmd);
+
+  TEST_ASSERT_EQUAL(AQUA_ERR_INVALID_COMMAND, err);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, DEFAULT_TEMP_MIN, state.thresholds.temp_min);
+}
+
+void test_apply_threshold_command_rejects_target_temp_out_of_range(void) {
+  AquariumState state;
+  aqua_logic_init(&state);
+
+  ParsedCommand cmd = {0};
+  cmd.type = COMMAND_TYPE_SET_THRESHOLDS;
+  cmd.params.threshold.has_target_temp = true;
+  cmd.params.threshold.target_temp = 100.0f;
+
+  AquaError err = aqua_logic_apply_command(&state, &cmd);
+
+  TEST_ASSERT_EQUAL(AQUA_ERR_INVALID_COMMAND, err);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, DEFAULT_TARGET_TEMP, state.target_temp);
+}
+
+void test_apply_threshold_command_rejects_invalid_pairs(void) {
+  AquariumState state;
+  aqua_logic_init(&state);
+
+  ParsedCommand cmd = {0};
+  cmd.type = COMMAND_TYPE_SET_THRESHOLDS;
+  cmd.params.threshold.has_ph_min = true;
+  cmd.params.threshold.ph_min = 8.0f;
+  cmd.params.threshold.has_ph_max = true;
+  cmd.params.threshold.ph_max = 7.0f; /* min >= max */
+
+  AquaError err = aqua_logic_apply_command(&state, &cmd);
+
+  TEST_ASSERT_EQUAL(AQUA_ERR_INVALID_COMMAND, err);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, DEFAULT_PH_MIN, state.thresholds.ph_min);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, DEFAULT_PH_MAX, state.thresholds.ph_max);
+}
+
+void test_apply_config_command_rejects_unpaired_wifi_fields(void) {
+  AquariumState state;
+  aqua_logic_init(&state);
+
+  ParsedCommand cmd = {0};
+  cmd.type = COMMAND_TYPE_SET_CONFIG;
+  cmd.params.config.has_wifi_ssid = true;
+  strcpy(cmd.params.config.wifi_ssid, "OnlySsid");
+
+  AquaError err = aqua_logic_apply_command(&state, &cmd);
+
+  TEST_ASSERT_EQUAL(AQUA_ERR_INVALID_COMMAND, err);
+  TEST_ASSERT_EQUAL_STRING("", state.config.wifi_ssid);
+  TEST_ASSERT_EQUAL_STRING("", state.config.wifi_password);
+}
+
+void test_apply_config_command_rejects_out_of_range_calibration(void) {
+  AquariumState state;
+  aqua_logic_init(&state);
+
+  ParsedCommand cmd = {0};
+  cmd.type = COMMAND_TYPE_SET_CONFIG;
+  cmd.params.config.has_tds_factor = true;
+  cmd.params.config.tds_factor = 0.01f; /* < 0.1 */
+
+  AquaError err = aqua_logic_apply_command(&state, &cmd);
+
+  TEST_ASSERT_EQUAL(AQUA_ERR_INVALID_COMMAND, err);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, state.config.tds_factor);
+}
 
 void test_immediate_feed_command(void) {
   AquariumState state;
@@ -471,8 +570,14 @@ int main(void) {
 
   /* 命令应用测试 */
   RUN_TEST(test_apply_control_command);
+  RUN_TEST(test_apply_control_command_rejects_target_temp_out_of_range);
   RUN_TEST(test_apply_threshold_command);
   RUN_TEST(test_apply_config_command);
+  RUN_TEST(test_apply_threshold_command_rejects_out_of_range);
+  RUN_TEST(test_apply_threshold_command_rejects_target_temp_out_of_range);
+  RUN_TEST(test_apply_threshold_command_rejects_invalid_pairs);
+  RUN_TEST(test_apply_config_command_rejects_unpaired_wifi_fields);
+  RUN_TEST(test_apply_config_command_rejects_out_of_range_calibration);
   RUN_TEST(test_immediate_feed_command);
 
   /* 紧急策略测试 */

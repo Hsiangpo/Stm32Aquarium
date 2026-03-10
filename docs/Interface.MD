@@ -119,10 +119,13 @@ $oc/devices/{device_id}/sys/commands/request_id={request_id}
     "level_min": 20,
     "level_max": 95,
     "feed_interval": 12,
-    "feed_amount": 2
+    "feed_amount": "2"
   }
 }
 ```
+
+> 说明：云端当前模型中 `feed_amount` 为 `string`，推荐按字符串传递档位（如 `"2"`）。  
+> 固件已兼容 `feed_amount` 的 `int/string` 两种表示；历史命令可继续使用。
 
 #### 1.3.3 set_config 命令
 
@@ -182,8 +185,8 @@ $oc/devices/{device_id}/sys/commands/request_id={request_id}
 | Base URL   | `https://8cee850016.st1.iotda-app.cn-north-4.myhuaweicloud.com` |
 | Project ID | `79d1f76b8f0e47fd934f3eb393bf2e7f`                              |
 | Device ID  | `690237639798273cc4fd09cb_MyAquarium_01`                        |
-| AK         | `HPUA4JX3YFP88FSKLZ8N`                                           |
-| SK         | `vZ2ggGBLX6ekyeZWDxopQM9J5DXmMSbUI5JNfgDg`                       |
+| AK         | `HPUAXBOD7O94OFVQKNST`                                           |
+| SK         | `ai2ept3hXzrYJF8eifMBCQ9udBli9K8X5lL3dSCY`                       |
 | 签名方式   | AK/SK 签名                                                      |
 
 > 说明：演示版参数固定内置在 `Aquarium_APP/entry/src/main/ets/config/iotdaDefaults.ts`，设置页无云端参数输入项。
@@ -352,14 +355,14 @@ GET /v5/iot/{project_id}/devices/{device_id}
 ## 4. AK/SK 签名示例（鸿蒙/TypeScript）
 
 ```typescript
-// 华为云 AK/SK 签名认证在部分文档/SDK里也被称为“V11 签名”。在 HTTP 请求头 Authorization 中，算法标识为 SDK-HMAC-SHA256。
+// 华为云 AK/SK 签名认证在部分文档/SDK里也被称为“V11 签名”。在 HTTP 请求头 Authorization 中，算法标识为 V11-HMAC-SHA256。
 //
 // 签名流程（与《API签名指南》一致）：
 // 1) CanonicalRequest = HTTPMethod + '\n' + CanonicalURI + '\n' + CanonicalQueryString + '\n' +
 //                      CanonicalHeaders + '\n' + SignedHeaders + '\n' + HexEncode(Hash(RequestPayload))
-// 2) StringToSign     = Algorithm + '\n' + X-Sdk-Date + '\n' + HexEncode(Hash(CanonicalRequest))
-// 3) Signature        = HexEncode(HMAC_SHA256(key=SK, msg=StringToSign))
-// 4) Authorization    = `${Algorithm} Access=${AK}, SignedHeaders=${SignedHeaders}, Signature=${Signature}`
+// 2) StringToSign     = Algorithm + '\n' + X-Sdk-Date + '\n' + Date/Region/Service + '\n' + HexEncode(Hash(CanonicalRequest))
+// 3) Signature        = HexEncode(HMAC_SHA256(key=DerivedKey, msg=StringToSign))
+// 4) Authorization    = `${Algorithm} Credential=${AK}/{Date}/{Region}/{Service}, SignedHeaders=${SignedHeaders}, Signature=${Signature}`
 //
 // 注意：
 // - X-Sdk-Date 必须为 UTC，格式 YYYYMMDDTHHMMSSZ（例如 20251213T120000Z）
@@ -368,7 +371,7 @@ GET /v5/iot/{project_id}/devices/{device_id}
 import { cryptoFramework } from "@kit.CryptoArchitectureKit";
 import { buffer } from "@kit.ArkTS";
 
-const ALGORITHM = "SDK-HMAC-SHA256";
+const ALGORITHM = "V11-HMAC-SHA256";
 
 function utf8Bytes(input: string): Uint8Array {
   return new Uint8Array(buffer.from(input, "utf-8").buffer);
@@ -449,9 +452,9 @@ export async function buildAuthorization(params: {
     await sha256Hex(canonicalRequest),
   ].join("\n");
 
-  const signature = await hmacSha256Hex(params.sk, stringToSign);
+  const signature = await hmacSha256Hex("<derived_key_hex>", stringToSign);
 
-  return `${ALGORITHM} Access=${params.ak}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return `${ALGORITHM} Credential=${params.ak}/{date}/{region}/iotda, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 }
 ```
 

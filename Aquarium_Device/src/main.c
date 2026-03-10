@@ -25,8 +25,10 @@ static OledContext g_oled;
 
 #define AP_PASSWORD_LEN 8
 static const char g_ap_ssid[] = "Aquarium_Setup";
+static const char g_ap_password_fixed[] = "12345678";
 static char g_ap_password[AP_PASSWORD_LEN + 1];
 static uint32_t g_prng_state;
+static uint16_t g_dbg_adc_level = 0;
 
 static void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -37,7 +39,7 @@ static void MX_USART2_UART_Init(void);
 
 static void Error_Handler(void);
 
-/* AT 命令写回调：通过 USART2 发送 */
+/* AT 命令写回调：通过 ESP32 UART 发送 */
 static size_t at_write_cb(const uint8_t *data, size_t len) {
   HAL_UART_Transmit(&huart2, (uint8_t *)data, (uint16_t)len, 100);
   return len;
@@ -48,6 +50,7 @@ static uint32_t get_tick_ms(void) { return HAL_GetTick(); }
 
 /* UART 接收缓冲区（单字节中断模式） */
 static uint8_t g_uart_rx_byte;
+volatile uint32_t g_uart_rx_total = 0;
 
 /* UART RX RingBuffer：ISR 只收集字节，主循环中再喂给 AT 引擎，避免
  * ISR/主线程并发访问 AtClient */
@@ -55,6 +58,15 @@ static uint8_t g_uart_rx_byte;
 static uint8_t g_uart_rx_ring[UART_RX_RING_SIZE];
 static volatile uint16_t g_uart_rx_head = 0;
 static volatile uint16_t g_uart_rx_tail = 0;
+
+/* 水位分段映射（基于 A3 原始 ADC）+ 一阶平滑，避免突跳
+ * 现场经验锚点：空≈0，半浸≈1650，全浸≈1750
+ */
+#define WATER_LEVEL_ADC_EMPTY 0U
+#define WATER_LEVEL_ADC_MID 1650U
+#define WATER_LEVEL_ADC_FULL 1750U
+#define WATER_LEVEL_FILTER_ALPHA 0.35f
+static float g_water_level_filtered = 0.0f;
 
 static bool uart_rx_push(uint8_t b) {
   uint16_t next = (uint16_t)((g_uart_rx_head + 1U) % UART_RX_RING_SIZE);
@@ -83,6 +95,9 @@ static bool uart_rx_pop(uint8_t *out) {
  * 开始 */
 #define STORAGE_FLASH_BASE 0x0801FC00U
 #define STORAGE_FLASH_SIZE 1024U
+
+#define CONFIG_SAVE_RETRY_INIT_MS 2000U
+#define CONFIG_SAVE_RETRY_MAX_MS 60000U
 
 static size_t stm32_storage_read(uint32_t offset, void *buf, size_t len) {
   if (!buf)
@@ -158,6 +173,31 @@ static uint16_t read_adc_channel(uint32_t channel) {
   uint16_t val = (uint16_t)HAL_ADC_GetValue(&hadc1);
   HAL_ADC_Stop(&hadc1);
   return val;
+}
+
+static float water_level_from_adc_smoothed(uint16_t adc_value) {
+  float raw = 0.0f;
+  if (adc_value <= WATER_LEVEL_ADC_EMPTY) {
+    raw = 0.0f;
+  } else if (adc_value >= WATER_LEVEL_ADC_FULL) {
+    raw = 100.0f;
+  } else if (adc_value <= WATER_LEVEL_ADC_MID) {
+    float span = (float)(WATER_LEVEL_ADC_MID - WATER_LEVEL_ADC_EMPTY);
+    raw = ((float)(adc_value - WATER_LEVEL_ADC_EMPTY) * 50.0f) / span;
+  } else {
+    float span = (float)(WATER_LEVEL_ADC_FULL - WATER_LEVEL_ADC_MID);
+    raw = 50.0f + ((float)(adc_value - WATER_LEVEL_ADC_MID) * 50.0f) / span;
+  }
+
+  /* 一阶低通滤波：减少抖动和“跳字感” */
+  g_water_level_filtered +=
+      (raw - g_water_level_filtered) * WATER_LEVEL_FILTER_ALPHA;
+  if (g_water_level_filtered < 0.0f) {
+    g_water_level_filtered = 0.0f;
+  } else if (g_water_level_filtered > 100.0f) {
+    g_water_level_filtered = 100.0f;
+  }
+  return g_water_level_filtered;
 }
 
 static uint32_t prng_next(void) {
@@ -277,6 +317,17 @@ static bool oled_i2c_write(uint8_t addr, const uint8_t *data, uint16_t len) {
 }
 
 static const OledHwOps g_oled_hw_ops = {.i2c_write = oled_i2c_write};
+
+static uint8_t detect_oled_i2c_addr(void) {
+  const uint8_t candidates[] = {0x3C, 0x3D};
+  for (size_t i = 0; i < sizeof(candidates); i++) {
+    if (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(candidates[i] << 1), 2, 20) ==
+        HAL_OK) {
+      return candidates[i];
+    }
+  }
+  return OLED_I2C_ADDR_DEFAULT;
+}
 
 /* ========================================================================== */
 /* DWT 微秒延时（精确时序，Cortex-M3）                                       */
@@ -409,7 +460,8 @@ int main(void) {
 
   /* 初始化 MQTT 客户端 */
   aqua_mqtt_init(&g_mqtt, &g_at, &g_app);
-  generate_ap_password(g_ap_password, sizeof(g_ap_password));
+  strncpy(g_ap_password, g_ap_password_fixed, sizeof(g_ap_password) - 1);
+  g_ap_password[sizeof(g_ap_password) - 1] = '\0';
   aqua_mqtt_set_ap_credentials(&g_mqtt, g_ap_ssid, g_ap_password);
   print_ap_credentials_serial(g_ap_ssid, g_ap_password);
 
@@ -469,8 +521,9 @@ int main(void) {
   /* 初始化 DS18B20 温度传感器（默认 25.0°C） */
   ds18b20_init(&g_ds18b20, 25.0f);
 
-  /* 初始化 OLED 显示（I2C1, 地址 0x3C） */
-  oled_init(&g_oled, &g_oled_hw_ops, OLED_I2C_ADDR_DEFAULT);
+  /* 初始化 OLED 显示（自动探测 0x3C/0x3D） */
+  uint8_t oled_addr = detect_oled_i2c_addr();
+  oled_init(&g_oled, &g_oled_hw_ops, oled_addr);
   show_ap_credentials_oled(g_ap_ssid, g_ap_password);
 
   /* 启动 UART 接收中断（单字节模式） */
@@ -479,12 +532,17 @@ int main(void) {
   /* 启动 MQTT 连接 */
   aqua_mqtt_start(&g_mqtt);
 
+  uint32_t config_save_next_attempt_ms = 0;
+  uint32_t config_save_retry_delay_ms = CONFIG_SAVE_RETRY_INIT_MS;
+
   while (1) {
     /* 先处理 UART RX 缓冲，把数据喂给 AT 引擎（避免在 ISR 中直接操作 AtClient）
      */
     uint8_t b;
-    while (uart_rx_pop(&b)) {
+    uint16_t rx_budget = 256U;
+    while (rx_budget > 0U && uart_rx_pop(&b)) {
       aqua_at_feed_rx(&g_at, &b, 1);
+      rx_budget--;
     }
 
     /* 每秒采样 ADC 传感器并更新 */
@@ -501,11 +559,11 @@ int main(void) {
       float v_ph = aqua_sensor_adc_to_voltage(adc_ph);
       float v_tds = aqua_sensor_adc_to_voltage(adc_tds);
       float v_turb = aqua_sensor_adc_to_voltage(adc_turb);
-      float v_level = aqua_sensor_adc_to_voltage(adc_level);
       float ph = aqua_sensor_ph_from_voltage(v_ph);
       float tds = aqua_sensor_tds_from_voltage(v_tds);
       float turb = aqua_sensor_turbidity_from_voltage(v_turb);
-      float level = aqua_sensor_water_level_from_voltage(v_level);
+      float level = water_level_from_adc_smoothed(adc_level);
+      g_dbg_adc_level = adc_level;
       /* 获取 DS18B20 温度（使用缓存值，若从未成功则返回默认值） */
       float temp = ds18b20_get_temperature(&g_ds18b20);
       /* 更新固件状态 */
@@ -534,9 +592,26 @@ int main(void) {
 
     /* 配置变更：落盘（Flash） */
     if (g_app.state.config_dirty) {
-      if (aqua_storage_save(&g_storage, &g_app.state.config) == STORAGE_OK) {
-        g_app.state.config_dirty = false;
+      bool due = (config_save_next_attempt_ms == 0) ||
+                 ((int32_t)(now_ms - config_save_next_attempt_ms) >= 0);
+      if (due) {
+        if (aqua_storage_save(&g_storage, &g_app.state.config) == STORAGE_OK) {
+          g_app.state.config_dirty = false;
+          config_save_next_attempt_ms = 0;
+          config_save_retry_delay_ms = CONFIG_SAVE_RETRY_INIT_MS;
+        } else {
+          config_save_next_attempt_ms = now_ms + config_save_retry_delay_ms;
+          if (config_save_retry_delay_ms < CONFIG_SAVE_RETRY_MAX_MS) {
+            uint32_t next_delay = config_save_retry_delay_ms * 2U;
+            config_save_retry_delay_ms = next_delay > CONFIG_SAVE_RETRY_MAX_MS
+                                             ? CONFIG_SAVE_RETRY_MAX_MS
+                                             : next_delay;
+          }
+        }
       }
+    } else {
+      config_save_next_attempt_ms = 0;
+      config_save_retry_delay_ms = CONFIG_SAVE_RETRY_INIT_MS;
     }
 
     /* LED 心跳（仅在无告警时闪烁，告警时由 actuator_callback 控制） */
@@ -548,16 +623,22 @@ int main(void) {
       }
     }
 
-    /* OLED 页面轮播（每 2s 切换，每 500ms 刷新） */
+    /* OLED 页面轮播：统一停留时长，避免“第一页看起来卡住”。 */
     static uint32_t last_oled_ms = 0;
     static uint32_t last_page_ms = 0;
     static uint8_t oled_page = 0;
-    if (HAL_GetTick() - last_page_ms >= 2000) {
-      last_page_ms = HAL_GetTick();
-      oled_page = (oled_page + 1) % 3;
+    const uint32_t page_dwell_ms = 6000U;
+    uint32_t page_elapsed = now_ms - last_page_ms;
+    if (page_elapsed >= page_dwell_ms) {
+      uint32_t steps = page_elapsed / page_dwell_ms;
+      if (steps == 0) {
+        steps = 1;
+      }
+      oled_page = (uint8_t)((oled_page + steps) % 3U);
+      last_page_ms += steps * page_dwell_ms;
     }
-    if (HAL_GetTick() - last_oled_ms >= 500) {
-      last_oled_ms = HAL_GetTick();
+    if (now_ms - last_oled_ms >= 500U) {
+      last_oled_ms = now_ms;
       oled_clear(&g_oled);
       char buf[12];
       const AquariumState *st = aqua_app_get_state(&g_app);
@@ -576,11 +657,13 @@ int main(void) {
         int_to_str((int)st->props.turbidity, buf, 12);
         oled_draw_string(&g_oled, 60, 10, "TB=");
         oled_draw_string(&g_oled, 78, 10, buf);
-        /* 第3行: LVL=85% */
+        /* 第3行: L=85 U=123（运行秒数） */
         int_to_str((int)st->props.water_level, buf, 12);
-        oled_draw_string(&g_oled, 0, 20, "LVL=");
-        oled_draw_string(&g_oled, 24, 20, buf);
-        oled_draw_string(&g_oled, 48, 20, "%");
+        oled_draw_string(&g_oled, 0, 20, "L=");
+        oled_draw_string(&g_oled, 12, 20, buf);
+        oled_draw_string(&g_oled, 36, 20, "U=");
+        int_to_str((int)(now_ms / 1000U), buf, 12);
+        oled_draw_string(&g_oled, 48, 20, buf);
       } else if (oled_page == 1) {
         /* 第1行: AUTO/MANUAL HTR:ON */
         oled_draw_string(&g_oled, 0, 0, st->props.auto_mode ? "AUTO" : "MANU");
@@ -611,6 +694,10 @@ int main(void) {
         /* 第3行: 留空或显示版本 */
         oled_draw_string(&g_oled, 0, 20, "AQUARIUM V1");
       }
+      /* 右上角页码，便于肉眼确认轮播在工作。 */
+      oled_draw_string(&g_oled, 104, 0, oled_page == 0   ? "P1"
+                                     : oled_page == 1 ? "P2"
+                                                      : "P3");
       oled_render(&g_oled);
     }
 
@@ -621,8 +708,11 @@ int main(void) {
 static void SystemClock_Config(void) {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  uint32_t flash_latency = FLASH_LATENCY_2;
 
-  // HSE (8MHz) -> PLL x9 = 72MHz
+  // Prefer HSE (8MHz) -> PLL x9 = 72MHz.
+  // Some boards/cabling environments may not provide a stable HSE source,
+  // so fall back to HSI/2 * 16 = 64MHz to keep firmware bootable.
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
@@ -631,7 +721,17 @@ static void SystemClock_Config(void) {
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-    Error_Handler();
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
+    RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16; // 8/2*16 = 64MHz
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+      Error_Handler();
+    }
+    flash_latency = FLASH_LATENCY_2;
   }
 
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
@@ -641,7 +741,7 @@ static void SystemClock_Config(void) {
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, flash_latency) != HAL_OK) {
     Error_Handler();
   }
 }
@@ -689,16 +789,16 @@ static void MX_GPIO_Init(void) {
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  // USART2 pins (PA2/PA3): TX AF push-pull, RX input
+  // ESP32 UART pins: TX AF push-pull, RX input
   GPIO_InitStruct.Pin = PIN_ESP32_TX_PIN;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(PIN_ESP32_TX_GPIO, &GPIO_InitStruct);
 
   GPIO_InitStruct.Pin = PIN_ESP32_RX_PIN;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(PIN_ESP32_RX_GPIO, &GPIO_InitStruct);
 
   // Outputs: relays, buzzer, LED
   HAL_GPIO_WritePin(PIN_LED_GPIO, PIN_LED_PIN, GPIO_PIN_RESET);
@@ -775,7 +875,7 @@ static void MX_I2C1_Init(void) {
   __HAL_RCC_I2C1_CLK_ENABLE();
 
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 400000;
+  hi2c1.Init.ClockSpeed = 100000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -822,9 +922,9 @@ static void MX_TIM3_Init(void) {
 }
 
 static void MX_USART2_UART_Init(void) {
-  __HAL_RCC_USART2_CLK_ENABLE();
+  ESP32_UART_RCC_ENABLE();
 
-  huart2.Instance = USART2;
+  huart2.Instance = ESP32_UART_INSTANCE;
   huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
@@ -835,9 +935,21 @@ static void MX_USART2_UART_Init(void) {
   if (HAL_UART_Init(&huart2) != HAL_OK) {
     Error_Handler();
   }
+
+  /* Enable UART IRQ so HAL_UART_Receive_IT() callbacks can fire. */
+  HAL_NVIC_SetPriority(ESP32_UART_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(ESP32_UART_IRQn);
 }
 
 static void Error_Handler(void) {
+  // Ensure LD2 can blink even if failure happens before MX_GPIO_Init().
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = PIN_LED_PIN;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(PIN_LED_GPIO, &GPIO_InitStruct);
+
   while (1) {
     HAL_GPIO_TogglePin(PIN_LED_GPIO, PIN_LED_PIN);
     HAL_Delay(100);
@@ -846,10 +958,18 @@ static void Error_Handler(void) {
 
 /* UART 接收完成回调（中断触发） */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if (huart->Instance == USART2) {
+  if (huart->Instance == ESP32_UART_INSTANCE) {
+    g_uart_rx_total++;
     /* ISR 中仅入队字节，避免与主循环并发访问 AtClient */
     (void)uart_rx_push(g_uart_rx_byte);
     /* 继续开启接收下一个字节 */
     HAL_UART_Receive_IT(&huart2, &g_uart_rx_byte, 1);
   }
 }
+
+void SysTick_Handler(void) {
+  HAL_IncTick();
+  HAL_SYSTICK_IRQHandler();
+}
+
+void ESP32_UART_IRQ_HANDLER(void) { HAL_UART_IRQHandler(&huart2); }

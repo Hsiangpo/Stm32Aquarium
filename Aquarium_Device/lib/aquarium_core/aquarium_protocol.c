@@ -20,6 +20,7 @@ static const char *find_json_key(const char *json, const char *key);
 static int parse_json_string(const char *start, char *out, size_t out_size);
 static int parse_json_bool(const char *start, bool *out);
 static int parse_json_int(const char *start, int32_t *out);
+static int parse_json_int_or_string(const char *start, int32_t *out);
 static int parse_json_float(const char *start, float *out);
 
 /* ============================================================================
@@ -194,16 +195,98 @@ static const char *find_json_key(const char *json, const char *key) {
   return pos;
 }
 
+static int parse_hex_nibble(char c) {
+  if (c >= '0' && c <= '9')
+    return (int)(c - '0');
+  if (c >= 'a' && c <= 'f')
+    return 10 + (int)(c - 'a');
+  if (c >= 'A' && c <= 'F')
+    return 10 + (int)(c - 'A');
+  return -1;
+}
+
 static int parse_json_string(const char *start, char *out, size_t out_size) {
-  if (*start != '"')
+  if (!start || !out || out_size == 0 || *start != '"')
     return -1;
+
   start++;
   size_t i = 0;
-  while (*start && *start != '"' && i < out_size - 1) {
-    out[i++] = *start++;
+
+  while (*start) {
+    char ch = *start;
+    if (ch == '"') {
+      out[i] = '\0';
+      return 0;
+    }
+
+    if (i >= out_size - 1) {
+      return -1;
+    }
+
+    if (ch == '\\') {
+      start++;
+      ch = *start;
+      if (ch == '\0') {
+        return -1;
+      }
+
+      switch (ch) {
+      case '"':
+      case '\\':
+      case '/':
+        out[i++] = ch;
+        start++;
+        break;
+      case 'b':
+        out[i++] = '\b';
+        start++;
+        break;
+      case 'f':
+        out[i++] = '\f';
+        start++;
+        break;
+      case 'n':
+        out[i++] = '\n';
+        start++;
+        break;
+      case 'r':
+        out[i++] = '\r';
+        start++;
+        break;
+      case 't':
+        out[i++] = '\t';
+        start++;
+        break;
+      case 'u': {
+        int code = 0;
+        for (int k = 0; k < 4; ++k) {
+          start++;
+          int nibble = parse_hex_nibble(*start);
+          if (nibble < 0) {
+            return -1;
+          }
+          code = (code << 4) | nibble;
+        }
+
+        if (code < 0x00 || code > 0x7F) {
+          return -1;
+        }
+        out[i++] = (char)code;
+        start++;
+        break;
+      }
+      default:
+        return -1;
+      }
+
+      continue;
+    }
+
+    out[i++] = ch;
+    start++;
   }
-  out[i] = '\0';
-  return (*start == '"') ? 0 : -1;
+
+  return -1;
 }
 
 static int parse_json_bool(const char *start, bool *out) {
@@ -222,6 +305,29 @@ static int parse_json_int(const char *start, int32_t *out) {
   long val = strtol(start, &end, 10);
   if (end == start)
     return -1;
+  *out = (int32_t)val;
+  return 0;
+}
+
+static int parse_json_int_or_string(const char *start, int32_t *out) {
+  if (!start || !out) {
+    return -1;
+  }
+
+  if (parse_json_int(start, out) == 0) {
+    return 0;
+  }
+
+  char text[16];
+  if (parse_json_string(start, text, sizeof(text)) != 0) {
+    return -1;
+  }
+
+  char *end = NULL;
+  long val = strtol(text, &end, 10);
+  if (end == text || *end != '\0') {
+    return -1;
+  }
   *out = (int32_t)val;
   return 0;
 }
@@ -366,8 +472,12 @@ AquaError aqua_parse_command_json(const char *json, size_t json_len,
       p->has_feed_interval = true;
 
     pos = find_json_key(paras, "feed_amount");
-    if (pos && parse_json_int(pos, &p->feed_amount) == 0)
+    if (pos && parse_json_int_or_string(pos, &p->feed_amount) == 0)
       p->has_feed_amount = true;
+
+    pos = find_json_key(paras, "target_temp");
+    if (pos && parse_json_float(pos, &p->target_temp) == 0)
+      p->has_target_temp = true;
 
   } else if (strcmp(cmd->service_id, SERVICE_ID_AQUARIUM_CONFIG) == 0 &&
              strcmp(cmd->command_name, COMMAND_NAME_SET_CONFIG) == 0) {

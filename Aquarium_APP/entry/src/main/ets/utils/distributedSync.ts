@@ -9,9 +9,6 @@ export interface DistributedDeviceInfo {
 
 export interface SharedSettings {
   updatedAt: string;
-  baseUrl: string;
-  projectId: string;
-  deviceId: string;
   autoRefreshEnabled: boolean;
   alarmNotifyEnabled: boolean;
 }
@@ -204,9 +201,6 @@ export async function loadSharedSettings(): Promise<SharedSettings | null> {
     const obj = JSON.parse(text) as Partial<SharedSettings>;
     return {
       updatedAt: String(obj.updatedAt ?? ''),
-      baseUrl: String(obj.baseUrl ?? ''),
-      projectId: String(obj.projectId ?? ''),
-      deviceId: String(obj.deviceId ?? ''),
       autoRefreshEnabled: !!obj.autoRefreshEnabled,
       alarmNotifyEnabled: typeof obj.alarmNotifyEnabled === 'boolean' ? obj.alarmNotifyEnabled : true,
     };
@@ -258,9 +252,8 @@ export async function subscribeSharedSettingsChanged(
 }
 
 export async function startRemoteFlow(targetDeviceId: string, params: {
-  baseUrl: string;
-  projectId: string;
-  deviceId: string;
+  autoRefreshEnabled: boolean;
+  alarmNotifyEnabled: boolean;
 }): Promise<void> {
   const ctx = GlobalContext.getAppContext() as any;
   const bundleName = getBundleName();
@@ -269,9 +262,8 @@ export async function startRemoteFlow(targetDeviceId: string, params: {
     bundleName,
     abilityName: 'EntryAbility',
     parameters: {
-      baseUrl: params.baseUrl,
-      projectId: params.projectId,
-      deviceId: params.deviceId,
+      autoRefreshEnabled: params.autoRefreshEnabled,
+      alarmNotifyEnabled: params.alarmNotifyEnabled,
     },
   };
 
