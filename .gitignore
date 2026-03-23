@@ -51,3 +51,8 @@ task_plan.md
 findings.md
 progress.md
 docs/plans/
+
+# ===== Local tooling / signing / embedded repos =====
+.omx/
+Aquarium_APP/signing/
+release/esp-at-v4.1.1.0-official/

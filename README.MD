@@ -35,3 +35,24 @@
 
 - 本仓库为单人课设演示版，连接参数采用固定内置值。
 - 端到端验收与截图点位清单见 `docs/Acceptance_Checklist.md`；App 侧更详细运行说明见 `Aquarium_APP/README.md`。
+
+### 推荐交付构建方式
+
+若仓库位于 `E:` 盘等 `exFAT` 目录，不要直接在源目录里构建 Harmony 工程。推荐统一使用根目录脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_aquarium_app.ps1
+```
+
+该脚本会自动：
+
+1. 将 `Aquarium_APP/` 复制到当前机器的 `NTFS` 临时工作区；
+2. 自动补齐 Hvigor 项目缓存；
+3. 执行 `ohpm install` 与 `API 17` 构建；
+4. 把签名后的 `HAP` 回写到 `release/Aquarium_APP/`。
+
+若需要直接安装到本机 API 17 模拟器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_aquarium_app.ps1 -Target 127.0.0.1:5555
+```

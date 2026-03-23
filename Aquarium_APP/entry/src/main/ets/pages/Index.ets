@@ -8,6 +8,7 @@ import {
   ConfigCommandParas,
   ControlCommandParas,
   IotdaAsyncCommandResponse,
+  IotdaDeviceMessageResponse,
   IotdaDeviceInfo,
   IotdaSyncCommandResponse,
   ThresholdCommandParas,
@@ -207,6 +208,21 @@ struct Index {
   @State noticeHint: string = '';
   @State lastRefreshAt: string = '-';
   @State lastRefreshResult: string = '-';
+  @State dashboardRevision: number = 0;
+  @State viewDeviceStatus: string = '未知';
+  @State viewDeviceId: string = '';
+  @State viewEventTime: string = '-';
+  @State viewLastRefreshAt: string = '-';
+  @State viewTemperature: string = '-';
+  @State viewPh: string = '-';
+  @State viewTds: string = '-';
+  @State viewTurbidity: string = '-';
+  @State viewWaterLevel: string = '-';
+  @State viewAlarm: string = '-';
+  @State viewHeater: string = '关';
+  @State viewPumpIn: string = '关';
+  @State viewPumpOut: string = '关';
+  @State viewAutoMode: string = '否';
 
   @State lastCommandAt: string = '-';
   @State lastCommandName: string = '-';
@@ -220,7 +236,7 @@ struct Index {
   @State deviceInfo: IotdaDeviceInfo | null = null;
   @State shadowSnapshot: AquariumShadowSnapshot | null = null;
 
-  @State controlResp: IotdaSyncCommandResponse | null = null;
+  @State controlResp: IotdaDeviceMessageResponse | null = null;
   @State thresholdResp: IotdaAsyncCommandResponse | null = null;
   @State configResp: IotdaSyncCommandResponse | null = null;
 
@@ -459,7 +475,7 @@ struct Index {
     }
     this.applyHardcodedDefaults();
     this.updateAutoRefreshTimer();
-    this.setInfo('Applied distributed behavior settings');
+    this.setInfo('已应用分布式行为设置');
   }
 
   private syncSessionSecrets(): void {
@@ -508,7 +524,7 @@ struct Index {
       this.alarmNotifyEnabled = !!s.alarmNotifyEnabled;
       this.applyHardcodedDefaults();
       this.updateAutoRefreshTimer();
-      this.setInfo(`Received distributed sync update (${s.updatedAt || 'unknown'})`);
+      this.setInfo(`已收到分布式同步更新（${s.updatedAt || '未知时间'}）`);
     });
   }
 
@@ -535,7 +551,7 @@ struct Index {
     this.alarmNotifyEnabled = !!s.alarmNotifyEnabled;
     this.applyHardcodedDefaults();
     this.updateAutoRefreshTimer();
-    await this.showToast(`已从分布式拉取配置（${s.updatedAt || 'unknown'}）`);
+    await this.showToast(`已从分布式拉取配置（${s.updatedAt || '未知时间'}）`);
   }
 
   private async pickDistributedDevice(devices: DistributedDeviceInfo[]): Promise<DistributedDeviceInfo | null> {
@@ -619,7 +635,7 @@ struct Index {
     void saveCardSnapshot({
       updatedAt: nowText,
       deviceId: snapshot.device_id,
-      deviceStatus: deviceStatus || 'UNKNOWN',
+      deviceStatus: this.statusText(deviceStatus),
       alarmLevel: p.alarm_level ?? 0,
       temperature: p.temperature ?? 0,
       ph: p.ph ?? 0,
@@ -632,7 +648,9 @@ struct Index {
   }
 
   private statusText(status?: string): string {
-    if (!status) return 'UNKNOWN';
+    if (!status) return '未知';
+    if (status === 'ONLINE') return '在线';
+    if (status === 'OFFLINE') return '离线';
     return status;
   }
 
@@ -645,7 +663,7 @@ struct Index {
     const p = shadow.properties;
     const item: RefreshHistoryItem = {
       at: nowText,
-      device_status: deviceStatus || 'UNKNOWN',
+      device_status: this.statusText(deviceStatus),
       alarm_level: p.alarm_level ?? 0,
       temperature: p.temperature ?? 0,
       ph: p.ph ?? 0,
@@ -1082,6 +1100,8 @@ struct Index {
     this.applyShadowToControlForm(snapshot);
     this.lastRefreshAt = nowText;
     this.lastRefreshResult = 'REALTIME';
+    this.dashboardRevision += 1;
+    this.applyDashboardViewState(snapshot, 'ONLINE', nowText);
     this.appendRefreshHistory(nowText, snapshot, 'ONLINE');
     this.persistCardSnapshot(nowText, snapshot, 'ONLINE');
     this.notifyAlarmIfChanged(prevAlarm, snapshot.properties.alarm_level ?? 0, snapshot, 'REALTIME');
@@ -1183,12 +1203,17 @@ struct Index {
           this.lastRefreshResult = 'PARTIAL';
         }
         this.lastRefreshAt = nowText;
+        this.dashboardRevision += 1;
 
         const deviceStatus =
           infoRes.status === 'fulfilled' ? (infoRes.value.status ?? 'UNKNOWN') : 'UNKNOWN';
+        this.applyDashboardViewState(shadowRes.value, deviceStatus, nowText);
         this.appendRefreshHistory(nowText, shadowRes.value, deviceStatus);
         this.persistCardSnapshot(nowText, shadowRes.value, deviceStatus);
         this.notifyAlarmIfChanged(prevAlarm, shadowRes.value.properties.alarm_level ?? 0, shadowRes.value, 'REST');
+        console.info(
+          `[Index] shadow assigned status=${deviceStatus} temp=${shadowRes.value.properties.temperature} updated=${nowText}`
+        );
       } else if (showNotice) {
         this.shadowSnapshot = null;
         this.lastRefreshResult = 'FAILED';
@@ -1201,6 +1226,9 @@ struct Index {
 
       if (infoRes.status === 'fulfilled') {
         this.deviceInfo = infoRes.value;
+        console.info(
+          `[Index] device info assigned status=${infoRes.value.status ?? 'UNKNOWN'} name=${infoRes.value.device_name ?? '-'}`
+        );
       } else if (showNotice) {
         this.deviceInfo = null;
       }
@@ -1543,11 +1571,11 @@ struct Index {
     this.isLoading = true;
     try {
       const client = this.buildClient();
-      this.controlResp = await client.sendControl(paras);
-      shouldAutoRefresh = this.controlResp.response?.result_code === 0;
-      this.lastCommandResult = shouldAutoRefresh ? 'SUCCESS' : 'FAILED';
+      this.controlResp = await client.sendControlMessage(paras);
+      shouldAutoRefresh = !!this.controlResp.message_id && !this.controlResp.error_code;
+      this.lastCommandResult = shouldAutoRefresh ? 'SUBMITTED' : 'FAILED';
       this.lastCommandResponse = JSON.stringify(this.controlResp);
-      this.setInfo('control 命令已返回');
+      this.setInfo('控制消息已下发');
     } catch (e) {
       this.lastCommandResult = 'ERROR';
       const payload: ErrorRecordPayload = { error: e?.message ?? String(e) };
@@ -1584,11 +1612,11 @@ struct Index {
     this.isLoading = true;
     try {
       const client = this.buildClient();
-      this.controlResp = await client.sendControl(feedParas);
-      shouldAutoRefresh = this.controlResp.response?.result_code === 0;
-      this.lastCommandResult = shouldAutoRefresh ? 'SUCCESS' : 'FAILED';
+      this.controlResp = await client.sendControlMessage(feedParas);
+      shouldAutoRefresh = !!this.controlResp.message_id && !this.controlResp.error_code;
+      this.lastCommandResult = shouldAutoRefresh ? 'SUBMITTED' : 'FAILED';
       this.lastCommandResponse = JSON.stringify(this.controlResp);
-      this.setInfo('投喂命令已返回');
+      this.setInfo('投喂消息已下发');
     } catch (e) {
       this.lastCommandResult = 'ERROR';
       const payload: ErrorRecordPayload = { error: e?.message ?? String(e) };
@@ -1635,11 +1663,11 @@ struct Index {
     this.isLoading = true;
     try {
       const client = this.buildClient();
-      this.controlResp = await client.sendControl(feedParas);
-      shouldAutoRefresh = this.controlResp.response?.result_code === 0;
-      this.lastCommandResult = shouldAutoRefresh ? 'SUCCESS' : 'FAILED';
+      this.controlResp = await client.sendControlMessage(feedParas);
+      shouldAutoRefresh = !!this.controlResp.message_id && !this.controlResp.error_code;
+      this.lastCommandResult = shouldAutoRefresh ? 'SUBMITTED' : 'FAILED';
       this.lastCommandResponse = JSON.stringify(this.controlResp);
-      this.setInfo('一次性倒计时投喂已提交');
+      this.setInfo('一次性投喂消息已下发');
     } catch (e) {
       this.lastCommandResult = 'ERROR';
       const payload: ErrorRecordPayload = { error: e?.message ?? String(e) };
@@ -1809,6 +1837,72 @@ struct Index {
     return value.toFixed(fractionDigits);
   }
 
+  private latestHistoryItem(): RefreshHistoryItem | null {
+    if (this.refreshHistory.length === 0) {
+      return null;
+    }
+    return this.refreshHistory[0];
+  }
+
+  private dashboardStatusValue(): string {
+    if (this.deviceInfo?.status) {
+      return this.statusText(this.deviceInfo.status);
+    }
+    return this.latestHistoryItem()?.device_status || this.viewDeviceStatus || '未知';
+  }
+
+  private dashboardTemperatureValue(): string {
+    const item = this.latestHistoryItem();
+    return item ? item.temperature.toFixed(2) : this.viewTemperature;
+  }
+
+  private dashboardPhValue(): string {
+    const item = this.latestHistoryItem();
+    return item ? item.ph.toFixed(2) : this.viewPh;
+  }
+
+  private dashboardTdsValue(): string {
+    const item = this.latestHistoryItem();
+    return item ? item.tds.toFixed(0) : this.viewTds;
+  }
+
+  private dashboardTurbidityValue(): string {
+    const item = this.latestHistoryItem();
+    return item ? item.turbidity.toFixed(0) : this.viewTurbidity;
+  }
+
+  private dashboardWaterLevelValue(): string {
+    const item = this.latestHistoryItem();
+    return item ? item.water_level.toFixed(0) : this.viewWaterLevel;
+  }
+
+  private dashboardAlarmValue(): string {
+    const item = this.latestHistoryItem();
+    return item ? this.alarmText(item.alarm_level) : this.viewAlarm;
+  }
+
+  private applyDashboardViewState(
+    snapshot: AquariumShadowSnapshot,
+    deviceStatus: string,
+    refreshAt: string
+  ): void {
+    const props = snapshot.properties;
+    this.viewDeviceStatus = this.statusText(deviceStatus);
+    this.viewDeviceId = snapshot.device_id || this.deviceId;
+    this.viewEventTime = snapshot.event_time || '-';
+    this.viewLastRefreshAt = refreshAt;
+    this.viewTemperature = this.formatNumber(props.temperature, 2);
+    this.viewPh = this.formatNumber(props.ph, 2);
+    this.viewTds = this.formatNumber(props.tds, 0);
+    this.viewTurbidity = this.formatNumber(props.turbidity, 0);
+    this.viewWaterLevel = this.formatNumber(props.water_level, 0);
+    this.viewAlarm = this.alarmText(props.alarm_level ?? 0);
+    this.viewHeater = props.heater ? '开' : '关';
+    this.viewPumpIn = props.pump_in ? '开' : '关';
+    this.viewPumpOut = props.pump_out ? '开' : '关';
+    this.viewAutoMode = props.auto_mode ? '是' : '否';
+  }
+
   @Builder
   private MetricCard(label: string, value: string, unit: string) {
     GlassCard() {
@@ -1936,14 +2030,78 @@ struct Index {
   private DashboardTab() {
     Scroll() {
       Column({ space: 16 }) {
+        Text(`${this.dashboardRevision}`)
+          .fontSize(0)
+          .opacity(0)
+          .height(0);
+
         // 设备状态卡片
         GlassCard() {
           Column() {
             this.SectionTitle('设备状态')
-            this.InfoRow('在线状态', this.statusText(this.deviceInfo?.status))
-            this.InfoRow('设备ID', this.shadowSnapshot?.device_id || this.deviceId)
-            this.InfoRow('更新时间', this.shadowSnapshot?.event_time || '-')
-            this.InfoRow('最后刷新', `${this.lastRefreshAt}`) // 简化显示
+            Row() {
+              Text('在线状态')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.dashboardStatusValue())
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
+
+            Row() {
+              Text('设备ID')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.viewDeviceId || this.deviceId)
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
+
+            Row() {
+              Text('更新时间')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.viewEventTime)
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
+
+            Row() {
+              Text('最后刷新')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.viewLastRefreshAt)
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
           }
         }
 
@@ -1952,12 +2110,168 @@ struct Index {
           this.SectionTitle('水质概览')
           
           Grid() {
-            GridItem() { this.MetricCard('温度', this.formatNumber(this.shadowSnapshot?.properties.temperature, 2), '°C') }
-            GridItem() { this.MetricCard('pH', this.formatNumber(this.shadowSnapshot?.properties.ph, 2), '') }
-            GridItem() { this.MetricCard('TDS', this.formatNumber(this.shadowSnapshot?.properties.tds, 0), 'ppm') }
-            GridItem() { this.MetricCard('浊度', this.formatNumber(this.shadowSnapshot?.properties.turbidity, 0), 'NTU') }
-            GridItem() { this.MetricCard('水位', this.formatNumber(this.shadowSnapshot?.properties.water_level, 0), '%') }
-            GridItem() { this.MetricCard('告警', this.alarmText(this.shadowSnapshot?.properties.alarm_level ?? 0), '') }
+            GridItem() {
+              GlassCard() {
+                Column({ space: 8 }) {
+                  Row() {
+                    Text('温度')
+                      .fontSize(14)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .fontWeight(FontWeight.Medium)
+                    Blank()
+                    Circle({ width: 6, height: 6 })
+                      .fill(UiConstants.COLOR_ACCENT)
+                      .opacity(0.5)
+                  }
+                  .width('100%')
+                  Row({ space: 4 }) {
+                    Text(this.dashboardTemperatureValue())
+                      .fontSize(22)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
+                    Text('°C')
+                      .fontSize(12)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .margin({ bottom: 4 })
+                      .alignSelf(ItemAlign.End)
+                  }
+                  .width('100%')
+                  .alignItems(VerticalAlign.Bottom)
+                }
+              }
+            }
+            GridItem() {
+              GlassCard() {
+                Column({ space: 8 }) {
+                  Row() {
+                    Text('pH')
+                      .fontSize(14)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .fontWeight(FontWeight.Medium)
+                    Blank()
+                    Circle({ width: 6, height: 6 })
+                      .fill(UiConstants.COLOR_ACCENT)
+                      .opacity(0.5)
+                  }
+                  .width('100%')
+                  Text(this.dashboardPhValue())
+                    .fontSize(22)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
+                }
+              }
+            }
+            GridItem() {
+              GlassCard() {
+                Column({ space: 8 }) {
+                  Row() {
+                    Text('TDS')
+                      .fontSize(14)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .fontWeight(FontWeight.Medium)
+                    Blank()
+                    Circle({ width: 6, height: 6 })
+                      .fill(UiConstants.COLOR_ACCENT)
+                      .opacity(0.5)
+                  }
+                  .width('100%')
+                  Row({ space: 4 }) {
+                    Text(this.dashboardTdsValue())
+                      .fontSize(22)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
+                    Text('ppm')
+                      .fontSize(12)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .margin({ bottom: 4 })
+                      .alignSelf(ItemAlign.End)
+                  }
+                  .width('100%')
+                  .alignItems(VerticalAlign.Bottom)
+                }
+              }
+            }
+            GridItem() {
+              GlassCard() {
+                Column({ space: 8 }) {
+                  Row() {
+                    Text('浊度')
+                      .fontSize(14)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .fontWeight(FontWeight.Medium)
+                    Blank()
+                    Circle({ width: 6, height: 6 })
+                      .fill(UiConstants.COLOR_ACCENT)
+                      .opacity(0.5)
+                  }
+                  .width('100%')
+                  Row({ space: 4 }) {
+                    Text(this.dashboardTurbidityValue())
+                      .fontSize(22)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
+                    Text('NTU')
+                      .fontSize(12)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .margin({ bottom: 4 })
+                      .alignSelf(ItemAlign.End)
+                  }
+                  .width('100%')
+                  .alignItems(VerticalAlign.Bottom)
+                }
+              }
+            }
+            GridItem() {
+              GlassCard() {
+                Column({ space: 8 }) {
+                  Row() {
+                    Text('水位')
+                      .fontSize(14)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .fontWeight(FontWeight.Medium)
+                    Blank()
+                    Circle({ width: 6, height: 6 })
+                      .fill(UiConstants.COLOR_ACCENT)
+                      .opacity(0.5)
+                  }
+                  .width('100%')
+                  Row({ space: 4 }) {
+                    Text(this.dashboardWaterLevelValue())
+                      .fontSize(22)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
+                    Text('%')
+                      .fontSize(12)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .margin({ bottom: 4 })
+                      .alignSelf(ItemAlign.End)
+                  }
+                  .width('100%')
+                  .alignItems(VerticalAlign.Bottom)
+                }
+              }
+            }
+            GridItem() {
+              GlassCard() {
+                Column({ space: 8 }) {
+                  Row() {
+                    Text('告警')
+                      .fontSize(14)
+                      .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
+                      .fontWeight(FontWeight.Medium)
+                    Blank()
+                    Circle({ width: 6, height: 6 })
+                      .fill(UiConstants.COLOR_ACCENT)
+                      .opacity(0.5)
+                  }
+                  .width('100%')
+                  Text(this.dashboardAlarmValue())
+                    .fontSize(22)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
+                }
+              }
+            }
           }
           .columnsTemplate('1fr 1fr')
           .rowsGap(12)
@@ -1968,9 +2282,9 @@ struct Index {
         GlassCard() {
           Column({ space: 12 }) {
             this.SectionTitle('实验记录')
-            this.InfoRow('最近命令', `${this.lastCommandName} (${this.lastCommandResult})`)
+            this.InfoRow('最近命令', `${this.lastCommandName}（${this.lastCommandResult}）`)
             
-            AnimButton({ text: this.isLoading ? '请求中...' : '导出实验记录', primary: false, isEnabled: !this.isLoading })
+          AnimButton({ text: this.isLoading ? '处理中...' : '导出实验记录', primary: false, isEnabled: !this.isLoading })
               .onClick(() => {
                 this.exportExperimentRecord().catch((e: Error) => this.setError(e?.message ?? String(e)));
               })
@@ -1990,10 +2304,69 @@ struct Index {
         GlassCard() {
           Column() {
             this.SectionTitle('更多详情')
-            this.InfoRow('加热棒', (this.shadowSnapshot?.properties.heater ?? false) ? 'ON' : 'OFF')
-            this.InfoRow('进水泵', (this.shadowSnapshot?.properties.pump_in ?? false) ? 'ON' : 'OFF')
-            this.InfoRow('排水泵', (this.shadowSnapshot?.properties.pump_out ?? false) ? 'ON' : 'OFF')
-            this.InfoRow('自动模式', (this.shadowSnapshot?.properties.auto_mode ?? false) ? '是' : '否')
+            Row() {
+              Text('加热棒')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.viewHeater)
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
+
+            Row() {
+              Text('进水泵')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.viewPumpIn)
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
+
+            Row() {
+              Text('排水泵')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.viewPumpOut)
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
+
+            Row() {
+              Text('自动模式')
+                .fontSize(14)
+                .fontColor('#666666')
+                .layoutWeight(1);
+              Text(this.viewAutoMode)
+                .fontSize(14)
+                .fontColor('#111111')
+                .fontWeight(FontWeight.Medium)
+                .textAlign(TextAlign.End)
+                .layoutWeight(1);
+            }
+            .width('100%')
+            .padding({ top: 12, bottom: 12 })
+            .border({ width: { bottom: 1 }, color: '#F5F5F5' });
           }
         }
       }
@@ -2010,11 +2383,11 @@ struct Index {
         GlassCard() {
           Column({ space: 8 }) {
             this.SectionTitle('设备控制')
-            this.ToggleRow('加热棒 (Heater)', this.ctl_heater, (v) => (this.ctl_heater = v))
-            this.ToggleRow('进水泵 (Pump In)', this.ctl_pump_in, (v) => (this.ctl_pump_in = v))
-            this.ToggleRow('排水泵 (Pump Out)', this.ctl_pump_out, (v) => (this.ctl_pump_out = v))
-            this.ToggleRow('自动模式 (Auto)', this.ctl_auto_mode, (v) => (this.ctl_auto_mode = v))
-            this.ToggleRow('静音 (Mute)', this.ctl_mute, (v) => (this.ctl_mute = v))
+            this.ToggleRow('加热棒', this.ctl_heater, (v) => (this.ctl_heater = v))
+            this.ToggleRow('进水泵', this.ctl_pump_in, (v) => (this.ctl_pump_in = v))
+            this.ToggleRow('排水泵', this.ctl_pump_out, (v) => (this.ctl_pump_out = v))
+            this.ToggleRow('自动模式', this.ctl_auto_mode, (v) => (this.ctl_auto_mode = v))
+            this.ToggleRow('静音', this.ctl_mute, (v) => (this.ctl_mute = v))
             this.NumberInputRow('目标温度 (°C)', this.ctl_target_temp, '例如 26.0', (v) => (this.ctl_target_temp = v))
             this.NumberInputRow('一次性倒计时 (秒)', this.ctl_feed_once_delay, '例如 60', (v) => (this.ctl_feed_once_delay = v))
           }
@@ -2040,10 +2413,10 @@ struct Index {
         if (this.controlResp) {
           GlassCard() {
             Column({ space: 4 }) {
-              Text(this.controlResp?.response?.result_code === 0 ? '指令执行成功' : '指令执行失败')
+              Text(!!this.controlResp?.message_id && !this.controlResp?.error_code ? '控制消息已下发' : '控制消息下发失败')
                 .fontSize(14)
                 .fontWeight(FontWeight.Bold)
-                .fontColor(this.controlResp?.response?.result_code === 0 ? UiConstants.COLOR_PRIMARY : UiConstants.COLOR_DANGER)
+                .fontColor(!!this.controlResp?.message_id && !this.controlResp?.error_code ? UiConstants.COLOR_PRIMARY : UiConstants.COLOR_DANGER)
               Text(JSON.stringify(this.controlResp))
                 .fontSize(12)
                 .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
@@ -2205,7 +2578,7 @@ struct Index {
                           Text(item.device_status)
                             .fontSize(12)
                             .fontWeight(FontWeight.Bold)
-                            .fontColor(item.device_status === 'ONLINE' ? UiConstants.COLOR_PRIMARY : UiConstants.COLOR_TEXT_SECONDARY)
+                            .fontColor(item.device_status === '在线' ? UiConstants.COLOR_PRIMARY : UiConstants.COLOR_TEXT_SECONDARY)
                         }
                         .width('100%')
                         
@@ -2245,7 +2618,7 @@ struct Index {
         Column() {
           GlassCard() {
             Row({ space: 12 }) {
-              Text('Aquarium Assistant')
+              Text('水族箱助手')
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(UiConstants.COLOR_PRIMARY)

@@ -16,6 +16,7 @@
 static uint8_t g_tx_buffer[2048];
 static size_t g_tx_len = 0;
 static uint32_t g_mock_time_ms = 0;
+static const int g_expected_urc_budget = 4;
 
 static size_t mock_write(const uint8_t *data, size_t len) {
   if (g_tx_len + len <= sizeof(g_tx_buffer)) {
@@ -52,6 +53,50 @@ static void feed_prompt(AtClient *at) {
  /* ESP-AT K > CRLF */
   const char *rx = "OK\r\n>";
   aqua_at_feed_rx(at, (const uint8_t *)rx, strlen(rx));
+}
+
+static void drive_publish_prompt_to_pub_data(MqttClient *mqtt, AtClient *at) {
+  feed_prompt(at);
+  aqua_mqtt_step(mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt->state);
+
+  g_mock_time_ms += 5;
+  aqua_mqtt_step(mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt->state);
+}
+
+static void feed_line(AtClient *at, const char *line) {
+  aqua_at_feed_rx(at, (const uint8_t *)line, strlen(line));
+}
+
+static void feed_ready(AtClient *at) { feed_line(at, "ready\r\n"); }
+
+static void drive_bootstrap_to_ate0(MqttClient *mqtt, AtClient *at) {
+  feed_ok(at);
+  aqua_mqtt_step(mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_AT_RESET, mqtt->state);
+
+  feed_ok(at);
+  aqua_mqtt_step(mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_AT_RESET_WAIT, mqtt->state);
+
+  feed_ready(at);
+  aqua_mqtt_step(mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_ATE0, mqtt->state);
+}
+
+static void drive_bootstrap_to_cwmode(MqttClient *mqtt, AtClient *at) {
+  drive_bootstrap_to_ate0(mqtt, at);
+  feed_ok(at);
+  aqua_mqtt_step(mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_CWMODE, mqtt->state);
+}
+
+static void drive_bootstrap_to_cwjap(MqttClient *mqtt, AtClient *at) {
+  drive_bootstrap_to_cwmode(mqtt, at);
+  feed_ok(at);
+  aqua_mqtt_step(mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_CWJAP, mqtt->state);
 }
 
 /* > CRLF */
@@ -110,6 +155,15 @@ void test_mqtt_full_connect(void) {
 
   feed_ok(&at);
   aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_AT_RESET, mqtt.state);
+  TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+RST"));
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_AT_RESET_WAIT, mqtt.state);
+
+  feed_ready(&at);
+  aqua_mqtt_step(&mqtt);
   TEST_ASSERT_EQUAL(MQTT_STATE_ATE0, mqtt.state);
 
   feed_ok(&at);
@@ -133,6 +187,23 @@ void test_mqtt_full_connect(void) {
   aqua_at_feed_rx(&at, (const uint8_t *)sntp_resp, strlen(sntp_resp));
   aqua_mqtt_step(&mqtt);
   TEST_ASSERT_EQUAL(MQTT_STATE_MQTTUSERCFG, mqtt.state);
+  TEST_ASSERT_NOT_NULL(
+      strstr((char *)g_tx_buffer, "AT+MQTTUSERCFG=0,1,\"a\",\"a\",\"a\",0,0,\"\""));
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_MQTTCLIENTID, mqtt.state);
+  TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+MQTTCLIENTID=0,\""));
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_MQTTUSERNAME, mqtt.state);
+  TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+MQTTUSERNAME=0,\""));
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_MQTTPASSWORD, mqtt.state);
+  TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+MQTTPASSWORD=0,\""));
 
   feed_ok(&at);
   aqua_mqtt_step(&mqtt);
@@ -144,7 +215,35 @@ void test_mqtt_full_connect(void) {
 
   feed_ok(&at);
   aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_MQTTMSGSUB, mqtt.state);
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
   TEST_ASSERT_EQUAL(MQTT_STATE_ONLINE, mqtt.state);
+}
+
+void test_mqtt_reset_wait_timeout_still_continues_bootstrap(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "device123");
+  aqua_mqtt_init(&mqtt, &at, &app);
+
+  aqua_mqtt_start(&mqtt);
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_AT_RESET, mqtt.state);
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_AT_RESET_WAIT, mqtt.state);
+
+  g_mock_time_ms = 3001;
+  aqua_mqtt_step(&mqtt);
+
+  TEST_ASSERT_EQUAL(MQTT_STATE_ATE0, mqtt.state);
 }
 
 /* ============================================================================
@@ -167,12 +266,7 @@ void test_mqtt_wifi_connect_fail(void) {
   aqua_mqtt_set_config(&mqtt, &cfg);
 
   aqua_mqtt_start(&mqtt);
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt);
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt);
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt);
+  drive_bootstrap_to_cwjap(&mqtt, &at);
 
  /* WJAP ERROR */
  /* CWJAP */
@@ -208,13 +302,7 @@ void test_mqtt_placeholder_wifi_enters_ap_mode_directly(void) {
   aqua_mqtt_set_config(&mqtt, &cfg);
 
   aqua_mqtt_start(&mqtt);
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_ATE0, mqtt.state);
-
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_CWMODE, mqtt.state);
+  drive_bootstrap_to_cwmode(&mqtt, &at);
 
   feed_ok(&at);
   aqua_mqtt_step(&mqtt);
@@ -237,10 +325,7 @@ void test_mqtt_cwjap_command_escapes_credentials(void) {
   aqua_mqtt_set_config(&mqtt, &cfg);
 
   aqua_mqtt_start(&mqtt);
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt); /* AT -> ATE0 */
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt); /* ATE0 -> CWMODE */
+  drive_bootstrap_to_cwmode(&mqtt, &at);
 
   reset_mocks();
   feed_ok(&at);
@@ -267,12 +352,7 @@ void test_mqtt_sntpcfg_uses_multi_servers(void) {
   aqua_mqtt_set_config(&mqtt, &cfg);
 
   aqua_mqtt_start(&mqtt);
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt); /* AT -> ATE0 */
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt); /* ATE0 -> CWMODE */
-  feed_ok(&at);
-  aqua_mqtt_step(&mqtt); /* CWMODE -> CWJAP */
+  drive_bootstrap_to_cwjap(&mqtt, &at);
 
   reset_mocks();
   feed_ok(&at);
@@ -303,6 +383,8 @@ void test_mqtt_publish_online(void) {
   bool ok = aqua_mqtt_publish(&mqtt, "test/t", "{\"a\":1}", 7);
   TEST_ASSERT_TRUE(ok);
   TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt.state);
+  TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+MQTTPUBRAW=0,\"test/t\",7,1,0"));
+  TEST_ASSERT_EQUAL_STRING("AT+MQTTPUBRAW=0,\"test/t\",7,1,0", mqtt.diag_last_pub_cmd);
 }
 
 /* ============================================================================
@@ -343,9 +425,7 @@ void test_mqtt_publish_completes(void) {
   TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt.state);
 
  /* > OK */
-  feed_prompt(&at);
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+  drive_publish_prompt_to_pub_data(&mqtt, &at);
 
   const char *urc = "+MQTTPUB:OK\r\n";
   aqua_at_feed_rx(&at, (const uint8_t *)urc, strlen(urc));
@@ -366,13 +446,40 @@ void test_mqtt_publish_completes_with_plain_ok_only(void) {
   aqua_mqtt_publish(&mqtt, "t", "{}", 2);
   TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt.state);
 
-  feed_prompt(&at);
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+  drive_publish_prompt_to_pub_data(&mqtt, &at);
 
   feed_ok(&at);
   aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+
+  g_mock_time_ms = 1206;
+  aqua_mqtt_step(&mqtt);
   TEST_ASSERT_EQUAL(MQTT_STATE_ONLINE, mqtt.state);
+}
+
+void test_mqtt_publish_plain_ok_then_fail_urc_becomes_error(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "test");
+  aqua_mqtt_init(&mqtt, &at, &app);
+  mqtt.state = MQTT_STATE_ONLINE;
+
+  aqua_mqtt_publish(&mqtt, "t", "{}", 2);
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt.state);
+
+  drive_publish_prompt_to_pub_data(&mqtt, &at);
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+
+  const char *pub_fail = "+MQTTPUB:FAIL\r\n";
+  aqua_at_feed_rx(&at, (const uint8_t *)pub_fail, strlen(pub_fail));
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_ERROR, mqtt.state);
 }
 
 /* ============================================================================
@@ -394,13 +501,11 @@ void test_mqtt_publish_timeout(void) {
   aqua_mqtt_publish(&mqtt, "t", "{}", 2);
 
  /* > */
-  feed_prompt(&at);
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+  drive_publish_prompt_to_pub_data(&mqtt, &at);
 
   g_mock_time_ms = 16001;
   aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_ONLINE, mqtt.state);
+  TEST_ASSERT_EQUAL(MQTT_STATE_ERROR, mqtt.state);
 }
 
 void test_mqtt_pub_data_preserves_subrecv_for_next_poll(void) {
@@ -416,9 +521,7 @@ void test_mqtt_pub_data_preserves_subrecv_for_next_poll(void) {
 
   /* Start an in-flight publish so state enters PUB_DATA. */
   TEST_ASSERT_TRUE(aqua_mqtt_publish(&mqtt, "test/topic", "{\"v\":1}", 7));
-  feed_prompt(&at);
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+  drive_publish_prompt_to_pub_data(&mqtt, &at);
 
   const char *cmd_payload =
       "{\"service_id\":\"Aquarium\",\"command_name\":\"control\","
@@ -445,6 +548,48 @@ void test_mqtt_pub_data_preserves_subrecv_for_next_poll(void) {
   TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "request_id=r_pub"));
 }
 
+void test_mqtt_pub_data_keeps_non_publish_urcs_in_order(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  reset_mocks();
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "dev123");
+  aqua_mqtt_init(&mqtt, &at, &app);
+  mqtt.state = MQTT_STATE_ONLINE;
+
+  TEST_ASSERT_TRUE(aqua_mqtt_publish(&mqtt, "test/topic", "{\"v\":1}", 7));
+  drive_publish_prompt_to_pub_data(&mqtt, &at);
+
+  const char *noise = "WIFI CONNECTED\r\n";
+  const char *cmd_payload =
+      "{\"service_id\":\"Aquarium\",\"command_name\":\"control\","
+      "\"paras\":{\"heater\":true}}";
+  char subrecv_urc[512];
+  snprintf(subrecv_urc, sizeof(subrecv_urc),
+           "+MQTTSUBRECV:0,\"$oc/devices/dev123/sys/commands/"
+           "request_id=r_keep\",%zu,%s\r\n",
+           strlen(cmd_payload), cmd_payload);
+
+  const char *pub_ok = "+MQTTPUB:OK\r\n";
+  char rx[896];
+  snprintf(rx, sizeof(rx), "%s%s%s", noise, subrecv_urc, pub_ok);
+  aqua_at_feed_rx(&at, (const uint8_t *)rx, strlen(rx));
+
+  aqua_mqtt_step(&mqtt);
+  TEST_ASSERT_EQUAL(MQTT_STATE_ONLINE, mqtt.state);
+  TEST_ASSERT_EQUAL(2, at.urc_count);
+
+  AtLine line = {0};
+  TEST_ASSERT_EQUAL(AT_OK, aqua_at_pop_line(&at, &line));
+  TEST_ASSERT_EQUAL_STRING("WIFI CONNECTED", line.data);
+
+  memset(&line, 0, sizeof(line));
+  TEST_ASSERT_EQUAL(AT_OK, aqua_at_pop_line(&at, &line));
+  TEST_ASSERT_NOT_NULL(strstr(line.data, "request_id=r_keep"));
+}
+
 /* ============================================================================
  * +MQTTSUBRECV 
  * ============================================================================
@@ -464,7 +609,7 @@ void test_mqtt_truncated_subrecv_still_handled(void) {
   aqua_at_feed_rx(&at, (const uint8_t *)urc, strlen(urc));
 
   bool handled = aqua_mqtt_poll_commands(&mqtt);
-  TEST_ASSERT_TRUE(handled);
+  TEST_ASSERT_FALSE(handled);
   TEST_ASSERT_EQUAL(MQTT_STATE_ONLINE, mqtt.state);
 }
 
@@ -489,6 +634,27 @@ void test_mqtt_truncated_subrecv_with_request_id_generates_error_response(void) 
   TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt.state);
   TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+MQTTPUBRAW"));
   TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "request_id=r_trunc"));
+}
+
+void test_mqtt_poll_commands_limits_urc_budget(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "test");
+  aqua_mqtt_init(&mqtt, &at, &app);
+  mqtt.state = MQTT_STATE_ONLINE;
+
+  for (int i = 0; i < AT_URC_QUEUE_SIZE; i++) {
+    char noise[32];
+    snprintf(noise, sizeof(noise), "NOISE-%d\r\n", i);
+    aqua_at_feed_rx(&at, (const uint8_t *)noise, strlen(noise));
+  }
+
+  TEST_ASSERT_EQUAL(AT_URC_QUEUE_SIZE, at.urc_count);
+  TEST_ASSERT_FALSE(aqua_mqtt_poll_commands(&mqtt));
+  TEST_ASSERT_EQUAL(AT_URC_QUEUE_SIZE - g_expected_urc_budget, at.urc_count);
 }
 
 /* ============================================================================
@@ -523,6 +689,34 @@ void test_mqtt_command_response_closed_loop(void) {
   TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt.state);
   TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+MQTTPUBRAW"));
   TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "request_id=r1"));
+}
+
+void test_mqtt_message_down_control_applies_without_response(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  reset_mocks();
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "dev123");
+  aqua_mqtt_init(&mqtt, &at, &app);
+  mqtt.state = MQTT_STATE_ONLINE;
+
+  const char *payload =
+      "{\"service_id\":\"aquarium_control\","
+      "\"command_name\":\"control\",\"paras\":{\"heater\":true}}";
+  char urc[512];
+  snprintf(urc, sizeof(urc),
+           "+MQTTSUBRECV:0,\"$oc/devices/dev123/sys/messages/down\",%zu,%s\r\n",
+           strlen(payload), payload);
+
+  aqua_at_feed_rx(&at, (const uint8_t *)urc, strlen(urc));
+
+  bool handled = aqua_mqtt_poll_commands(&mqtt);
+  TEST_ASSERT_TRUE(handled);
+  TEST_ASSERT_EQUAL(MQTT_STATE_ONLINE, mqtt.state);
+  TEST_ASSERT_TRUE(app.state.props.heater);
+  TEST_ASSERT_EQUAL(0, g_tx_len);
 }
 
 /* ============================================================================
@@ -602,14 +796,7 @@ void test_mqtt_cwjap_fail_enters_ap_mode(void) {
   aqua_mqtt_set_config(&mqtt, &cfg);
   aqua_mqtt_start(&mqtt);
 
- /* CWJAP */
-  feed_ok(&at); /* AT */
-  aqua_mqtt_step(&mqtt);
-  feed_ok(&at); /* ATE0 */
-  aqua_mqtt_step(&mqtt);
-  feed_ok(&at); /* CWMODE */
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_CWJAP, mqtt.state);
+  drive_bootstrap_to_cwjap(&mqtt, &at);
 
  /* CWJAP */
   feed_error(&at);
@@ -708,13 +895,7 @@ void test_mqtt_ap_full_flow(void) {
 
  /* AP CWJAP */
   aqua_mqtt_start(&mqtt);
-  feed_ok(&at); /* AT */
-  aqua_mqtt_step(&mqtt);
-  feed_ok(&at); /* ATE0 */
-  aqua_mqtt_step(&mqtt);
-  feed_ok(&at); /* CWMODE=1 */
-  aqua_mqtt_step(&mqtt);
- /* 3 CWJAP */
+  drive_bootstrap_to_cwjap(&mqtt, &at);
   feed_error(&at);
   aqua_mqtt_step(&mqtt);
   feed_error(&at);
@@ -778,6 +959,27 @@ void test_mqtt_ap_wait_timeout_keeps_waiting(void) {
 
   TEST_ASSERT_EQUAL(MQTT_STATE_AP_WAIT, mqtt.state);
   TEST_ASSERT_EQUAL(AT_STATE_IDLE, at.state);
+}
+
+void test_mqtt_poll_ap_config_limits_urc_budget(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "test");
+  aqua_mqtt_init(&mqtt, &at, &app);
+  mqtt.state = MQTT_STATE_AP_WAIT;
+
+  for (int i = 0; i < AT_URC_QUEUE_SIZE; i++) {
+    char noise[32];
+    snprintf(noise, sizeof(noise), "NOISE-%d\r\n", i);
+    aqua_at_feed_rx(&at, (const uint8_t *)noise, strlen(noise));
+  }
+
+  TEST_ASSERT_EQUAL(AT_URC_QUEUE_SIZE, at.urc_count);
+  TEST_ASSERT_FALSE(aqua_mqtt_poll_ap_config(&mqtt));
+  TEST_ASSERT_EQUAL(AT_URC_QUEUE_SIZE - g_expected_urc_budget, at.urc_count);
 }
 
 void test_mqtt_cwmode_waiting_keeps_state(void) {
@@ -853,7 +1055,28 @@ void test_mqtt_mqttsub_timeout_treated_online(void) {
 
   aqua_mqtt_step(&mqtt);
 
+  TEST_ASSERT_EQUAL(MQTT_STATE_MQTTMSGSUB, mqtt.state);
+
+  at.state = AT_STATE_DONE_TIMEOUT;
+  aqua_mqtt_step(&mqtt);
   TEST_ASSERT_EQUAL(MQTT_STATE_ONLINE, mqtt.state);
+}
+
+void test_mqtt_online_disconnect_urc_enters_error(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "test");
+  aqua_mqtt_init(&mqtt, &at, &app);
+
+  mqtt.state = MQTT_STATE_ONLINE;
+  feed_line(&at, "WIFI DISCONNECT\r\n");
+
+  aqua_mqtt_step(&mqtt);
+
+  TEST_ASSERT_EQUAL(MQTT_STATE_ERROR, mqtt.state);
 }
 
 void test_mqtt_sntptime_time_updated_retries_query(void) {
@@ -877,6 +1100,47 @@ void test_mqtt_sntptime_time_updated_retries_query(void) {
   TEST_ASSERT_EQUAL(MQTT_STATE_SNTPTIME, mqtt.state);
   TEST_ASSERT_EQUAL(1, mqtt.retry_count);
   TEST_ASSERT_EQUAL(AT_STATE_WAITING, at.state);
+}
+
+void test_mqtt_sntptime_survives_noise_after_time_line(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+
+  reset_mocks();
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "dev123");
+  aqua_mqtt_init(&mqtt, &at, &app);
+
+  MqttConfig cfg = {0};
+  strcpy(cfg.device_id, "dev123");
+  strcpy(cfg.device_secret, "secret");
+  aqua_mqtt_set_config(&mqtt, &cfg);
+
+  mqtt.state = MQTT_STATE_SNTPTIME;
+  TEST_ASSERT_EQUAL(AT_OK,
+                    aqua_at_begin(&at, "AT+CIPSNTPTIME?", 5000));
+
+  for (int i = 0; i < 8; i++) {
+    char noise[32];
+    snprintf(noise, sizeof(noise), "NOISE-A-%d\r\n", i);
+    feed_line(&at, noise);
+  }
+
+  feed_line(&at, "+CIPSNTPTIME:Wed Mar 11 00:38:28 2026\r\n");
+
+  for (int i = 0; i < 8; i++) {
+    char noise[32];
+    snprintf(noise, sizeof(noise), "NOISE-B-%d\r\n", i);
+    feed_line(&at, noise);
+  }
+
+  feed_ok(&at);
+  aqua_mqtt_step(&mqtt);
+
+  TEST_ASSERT_EQUAL(MQTT_STATE_MQTTUSERCFG, mqtt.state);
+  TEST_ASSERT_EQUAL(AT_STATE_WAITING, at.state);
+  TEST_ASSERT_EQUAL_STRING("2026031100", mqtt.timestamp);
 }
 
 void test_mqtt_is_ap_mode(void) {
@@ -1057,9 +1321,7 @@ void test_mqtt_set_config_with_wifi_triggers_reconnect(void) {
   TEST_ASSERT_EQUAL_STRING("NewPass123", mqtt.config.wifi_password);
 
  /* ONLINE */
-  feed_prompt(&at);
-  aqua_mqtt_step(&mqtt);
-  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+  drive_publish_prompt_to_pub_data(&mqtt, &at);
 
   const char *pub_ok = "+MQTTPUB:OK\r\n";
   aqua_at_feed_rx(&at, (const uint8_t *)pub_ok, strlen(pub_ok));
@@ -1176,6 +1438,7 @@ int main(void) {
 
   RUN_TEST(test_mqtt_init);
   RUN_TEST(test_mqtt_full_connect);
+  RUN_TEST(test_mqtt_reset_wait_timeout_still_continues_bootstrap);
   RUN_TEST(test_mqtt_wifi_connect_fail);
   RUN_TEST(test_mqtt_placeholder_wifi_enters_ap_mode_directly);
   RUN_TEST(test_mqtt_cwjap_command_escapes_credentials);
@@ -1186,9 +1449,12 @@ int main(void) {
   RUN_TEST(test_mqtt_publish_completes_with_plain_ok_only);
   RUN_TEST(test_mqtt_publish_timeout);
   RUN_TEST(test_mqtt_pub_data_preserves_subrecv_for_next_poll);
+  RUN_TEST(test_mqtt_pub_data_keeps_non_publish_urcs_in_order);
   RUN_TEST(test_mqtt_truncated_subrecv_still_handled);
   RUN_TEST(test_mqtt_truncated_subrecv_with_request_id_generates_error_response);
+  RUN_TEST(test_mqtt_poll_commands_limits_urc_budget);
   RUN_TEST(test_mqtt_command_response_closed_loop);
+  RUN_TEST(test_mqtt_message_down_control_applies_without_response);
 
  /* SNTP */
   RUN_TEST(test_mqtt_parse_sntp_time_valid);
@@ -1209,11 +1475,14 @@ int main(void) {
   RUN_TEST(test_mqtt_parse_ap_request_absolute_uri_config);
   RUN_TEST(test_mqtt_ap_full_flow);
   RUN_TEST(test_mqtt_ap_wait_timeout_keeps_waiting);
+  RUN_TEST(test_mqtt_poll_ap_config_limits_urc_budget);
   RUN_TEST(test_mqtt_cwmode_waiting_keeps_state);
   RUN_TEST(test_mqtt_cwjap_waiting_no_fail_increment);
   RUN_TEST(test_mqtt_ap_start_waiting_keeps_state);
   RUN_TEST(test_mqtt_mqttsub_timeout_treated_online);
+  RUN_TEST(test_mqtt_online_disconnect_urc_enters_error);
   RUN_TEST(test_mqtt_sntptime_time_updated_retries_query);
+  RUN_TEST(test_mqtt_sntptime_survives_noise_after_time_line);
   RUN_TEST(test_mqtt_is_ap_mode);
 
  /* 14 */

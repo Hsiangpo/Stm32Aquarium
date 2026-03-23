@@ -62,6 +62,16 @@ static void feed_prompt(AtClient *at) {
   aqua_at_feed_rx(at, (const uint8_t *)rx, strlen(rx));
 }
 
+static void drive_firmware_publish_prompt(AquaFirmware *fw, AtClient *at) {
+  feed_prompt(at);
+  aqua_fw_step(fw, g_mock_time_ms);
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, fw->mqtt->state);
+
+  g_mock_time_ms += 5;
+  aqua_fw_step(fw, g_mock_time_ms);
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, fw->mqtt->state);
+}
+
 void setUp(void) {
   g_tx_len = 0;
   g_mock_time_ms = 0;
@@ -135,9 +145,7 @@ void test_firmware_periodic_report(void) {
   TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "properties/report"));
 
   /* 发送 > 提示符（而非 OK）表示可以发送数据 */
-  feed_prompt(&at);
-  aqua_fw_step(&fw, g_mock_time_ms);
-  TEST_ASSERT_EQUAL(MQTT_STATE_PUB_DATA, mqtt.state);
+  drive_firmware_publish_prompt(&fw, &at);
 
   const char *urc = "+MQTTPUB:OK\r\n";
   aqua_at_feed_rx(&at, (const uint8_t *)urc, strlen(urc));
@@ -180,6 +188,36 @@ void test_firmware_no_duplicate_report_when_publishing(void) {
   size_t tx_before = g_tx_len;
   aqua_fw_step(&fw, g_mock_time_ms);
   TEST_ASSERT_TRUE(g_tx_len == tx_before || mqtt.state != MQTT_STATE_ONLINE);
+}
+
+void test_firmware_online_transition_forces_immediate_report(void) {
+  AtClient at;
+  AquariumApp app;
+  MqttClient mqtt;
+  AquaFirmware fw;
+
+  aqua_at_init(&at, mock_write, mock_now_ms);
+  aqua_app_init(&app, "dev123");
+  aqua_mqtt_init(&mqtt, &at, &app);
+  aqua_fw_init(&fw, &app, &mqtt);
+
+  MqttConfig cfg = {0};
+  strcpy(cfg.device_id, "dev123");
+  aqua_mqtt_set_config(&mqtt, &cfg);
+  aqua_app_set_report_interval(&app, 30);
+  aqua_fw_update_sensors(&fw, 25.5f, 7.2f, 300.0f, 10.0f, 80.0f);
+
+  mqtt.state = MQTT_STATE_IDLE;
+  g_mock_time_ms = 1000;
+  aqua_fw_step(&fw, g_mock_time_ms);
+
+  mqtt.state = MQTT_STATE_ONLINE;
+  g_mock_time_ms = 2000;
+  reset_tx_buffer();
+  aqua_fw_step(&fw, g_mock_time_ms);
+
+  TEST_ASSERT_EQUAL(MQTT_STATE_PUBLISHING, mqtt.state);
+  TEST_ASSERT_NOT_NULL(strstr((char *)g_tx_buffer, "AT+MQTTPUBRAW"));
 }
 
 /* ============================================================================
@@ -339,6 +377,7 @@ int main(void) {
   RUN_TEST(test_firmware_init);
   RUN_TEST(test_firmware_periodic_report);
   RUN_TEST(test_firmware_no_duplicate_report_when_publishing);
+  RUN_TEST(test_firmware_online_transition_forces_immediate_report);
   RUN_TEST(test_firmware_sensor_update);
   RUN_TEST(test_firmware_actuator_callback);
   RUN_TEST(test_firmware_offline_logic_continues);

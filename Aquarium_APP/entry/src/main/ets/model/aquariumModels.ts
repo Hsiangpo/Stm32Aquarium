@@ -53,6 +53,20 @@ export interface IotdaAsyncCommandResponse {
   error_msg?: string;
 }
 
+export interface IotdaDeviceMessageResponse {
+  message_id?: string;
+  created_time?: string;
+  error_code?: string;
+  error_msg?: string;
+  result?: {
+    status?: string;
+    error_info?: {
+      error_code?: string;
+      error_msg?: string;
+    };
+  };
+}
+
 export interface ControlCommandParas {
   heater?: boolean;
   pump_in?: boolean;

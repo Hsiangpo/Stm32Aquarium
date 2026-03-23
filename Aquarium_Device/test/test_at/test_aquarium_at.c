@@ -74,6 +74,7 @@ void test_at_begin_sends_command(void) {
   TEST_ASSERT_EQUAL(AT_STATE_WAITING, client.state);
   TEST_ASSERT_EQUAL(4, g_tx_len);
   TEST_ASSERT_EQUAL_STRING_LEN("AT\r\n", (char *)g_tx_buffer, 4);
+  TEST_ASSERT_EQUAL_STRING("AT", client.last_cmd);
 }
 
 void test_at_begin_busy(void) {
@@ -217,6 +218,8 @@ void test_command_with_response_line(void) {
   const AtLine *resp = aqua_at_get_response(&client);
   TEST_ASSERT_NOT_NULL(resp);
   TEST_ASSERT_EQUAL_STRING("AT version:1.0", resp->data);
+  TEST_ASSERT_EQUAL(AT_STATE_DONE_OK, client.last_terminal_state);
+  TEST_ASSERT_EQUAL_STRING("AT version:1.0", client.last_result);
 }
 
 /* ============================================================================
@@ -240,6 +243,31 @@ void test_command_timeout(void) {
   g_mock_time_ms = 1500;
   state = aqua_at_step(&client);
   TEST_ASSERT_EQUAL(AT_STATE_DONE_TIMEOUT, state);
+  TEST_ASSERT_EQUAL(AT_STATE_DONE_TIMEOUT, client.last_terminal_state);
+  TEST_ASSERT_EQUAL_STRING("TIMEOUT", client.last_result);
+}
+
+void test_last_cmd_keeps_only_command_prefix(void) {
+  AtClient client;
+  aqua_at_init(&client, mock_write, mock_now_ms);
+
+  aqua_at_begin(&client, "AT+MQTTCONN=0,\"host\",1883,1", 1000);
+
+  TEST_ASSERT_EQUAL_STRING("AT+MQTTCONN", client.last_cmd);
+}
+
+void test_error_preserves_first_response_line_for_diagnostics(void) {
+  AtClient client;
+  aqua_at_init(&client, mock_write, mock_now_ms);
+
+  aqua_at_begin(&client, "AT+CWJAP=\"ssid\",\"pwd\"", 1000);
+
+  const char *rx = "WIFI DISCONNECT\r\nERROR\r\n";
+  aqua_at_feed_rx(&client, (const uint8_t *)rx, strlen(rx));
+
+  TEST_ASSERT_EQUAL(AT_STATE_DONE_ERROR, client.state);
+  TEST_ASSERT_EQUAL(AT_STATE_DONE_ERROR, client.last_terminal_state);
+  TEST_ASSERT_EQUAL_STRING("WIFI DISCONNECT", client.last_result);
 }
 
 /* ============================================================================
@@ -390,6 +418,7 @@ int main(void) {
   /* 命令发送测试 */
   RUN_TEST(test_at_begin_sends_command);
   RUN_TEST(test_at_begin_busy);
+  RUN_TEST(test_last_cmd_keeps_only_command_prefix);
 
   /* CRLF 行解析测试 */
   RUN_TEST(test_feed_rx_single_line_crlf);
@@ -402,6 +431,7 @@ int main(void) {
   RUN_TEST(test_command_error_response);
   RUN_TEST(test_command_cme_error_response);
   RUN_TEST(test_command_with_response_line);
+  RUN_TEST(test_error_preserves_first_response_line_for_diagnostics);
 
   /* 超时测试 */
   RUN_TEST(test_command_timeout);

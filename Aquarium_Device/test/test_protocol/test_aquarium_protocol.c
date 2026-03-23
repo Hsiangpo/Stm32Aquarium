@@ -117,6 +117,40 @@ void test_build_properties_json_buffer_small(void) {
   TEST_ASSERT_EQUAL(AQUA_ERR_BUFFER_TOO_SMALL, err);
 }
 
+void test_build_properties_json_compact(void) {
+  AquariumProperties props = {.temperature = 26.5f,
+                              .ph = 0.0f,
+                              .tds = 0.0f,
+                              .turbidity = 0.0f,
+                              .water_level = 80.0f,
+                              .heater = true,
+                              .pump_in = false,
+                              .pump_out = false,
+                              .auto_mode = true,
+                              .feed_countdown = 123,
+                              .feeding_in_progress = false,
+                              .alarm_level = 0,
+                              .alarm_muted = false};
+
+  char buffer[512];
+  size_t len = 0;
+
+  AquaError err =
+      aqua_build_properties_json_compact(&props, buffer, sizeof(buffer), &len);
+
+  TEST_ASSERT_EQUAL(AQUA_OK, err);
+  TEST_ASSERT_GREATER_THAN(0, len);
+  TEST_ASSERT_NOT_NULL(strstr(buffer, "\"temperature\":"));
+  TEST_ASSERT_NOT_NULL(strstr(buffer, "\"water_level\":"));
+  TEST_ASSERT_NOT_NULL(strstr(buffer, "\"alarm_level\":"));
+  TEST_ASSERT_NULL(strstr(buffer, "\"ph\":"));
+  TEST_ASSERT_NULL(strstr(buffer, "\"tds\":"));
+  TEST_ASSERT_NULL(strstr(buffer, "\"turbidity\":"));
+  TEST_ASSERT_NULL(strstr(buffer, "\"heater\":"));
+  TEST_ASSERT_NULL(strstr(buffer, "\"pump_in\":"));
+  TEST_ASSERT_NULL(strstr(buffer, "\"feed_countdown\":"));
+}
+
 /* ============================================================================
  * 测试：命令响应 JSON 生成
  * ============================================================================
@@ -373,6 +407,7 @@ int main(void) {
   RUN_TEST(test_build_properties_json_no_nan_inf);
   RUN_TEST(test_build_properties_json_null_ptr);
   RUN_TEST(test_build_properties_json_buffer_small);
+  RUN_TEST(test_build_properties_json_compact);
 
   /* 命令响应测试 */
   RUN_TEST(test_build_response_json_success);

@@ -70,6 +70,22 @@ AquaError aqua_build_properties_json(const AquariumProperties *props,
                                      char *buffer, size_t buf_size,
                                      size_t *out_len);
 
+/**
+ * @brief 生成紧凑版属性上报 JSON
+ *
+ * 用于最小稳定闭环场景，仅保留首页卡片当前必须刷新的 3 个字段：
+ * temperature / water_level / alarm_level
+ *
+ * @param props     属性结构体指针
+ * @param buffer    输出缓冲区
+ * @param buf_size  缓冲区大小
+ * @param out_len   [输出] 实际生成的 JSON 长度（不含 '\0'）
+ * @return AquaError 错误码
+ */
+AquaError aqua_build_properties_json_compact(const AquariumProperties *props,
+                                             char *buffer, size_t buf_size,
+                                             size_t *out_len);
+
 /* ============================================================================
  * 命令下发 JSON 解析
  * ============================================================================

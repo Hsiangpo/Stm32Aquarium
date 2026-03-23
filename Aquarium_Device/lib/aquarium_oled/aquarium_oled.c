@@ -9,6 +9,9 @@
 #define OLED_CTRL_CMD 0x00
 #define OLED_CTRL_DATA 0x40
 
+/* 当前工程只有一块 OLED，使用已注册的硬件回调可规避上下文尾部指针被踩坏。 */
+static const OledHwOps *g_registered_hw = NULL;
+
 static const uint8_t g_init_cmds[] = {0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00,
                                       0x40, 0x8D, 0x14, 0x20, 0x00, 0xA1, 0xC8,
                                       0xDA, 0x12, 0x81, 0xCF, 0xD9, 0xF1, 0xDB,
@@ -50,19 +53,23 @@ static const uint8_t g_font5x7[][5] = {
 
 #define FONT_CHAR_COUNT 59
 
-static void send_cmd(OledContext *ctx, uint8_t cmd) {
+static bool send_cmd(OledContext *ctx, uint8_t cmd) {
   uint8_t buf[2] = {OLED_CTRL_CMD, cmd};
-  if (ctx->hw && ctx->hw->i2c_write) {
-    ctx->hw->i2c_write(ctx->i2c_addr, buf, 2);
+  if (g_registered_hw && g_registered_hw->i2c_write) {
+    return g_registered_hw->i2c_write(ctx->i2c_addr, buf, 2);
   }
+  return false;
 }
 
 void oled_init(OledContext *ctx, const OledHwOps *hw, uint8_t i2c_addr) {
   ctx->hw = hw;
+  g_registered_hw = hw;
   ctx->i2c_addr = i2c_addr;
   memset(ctx->buffer, 0, OLED_BUF_SIZE);
   for (uint8_t i = 0; i < sizeof(g_init_cmds); i++) {
-    send_cmd(ctx, g_init_cmds[i]);
+    if (!send_cmd(ctx, g_init_cmds[i])) {
+      break;
+    }
   }
 }
 
@@ -100,20 +107,20 @@ void oled_draw_string(OledContext *ctx, uint8_t x, uint8_t y, const char *s) {
 }
 
 void oled_render(OledContext *ctx) {
-  if (!ctx->hw || !ctx->hw->i2c_write)
+  if (!g_registered_hw || !g_registered_hw->i2c_write)
     return;
-  send_cmd(ctx, 0x21);
-  send_cmd(ctx, 0);
-  send_cmd(ctx, 127);
-  send_cmd(ctx, 0x22);
-  send_cmd(ctx, 0);
-  send_cmd(ctx, 7);
+  if (!send_cmd(ctx, 0x21) || !send_cmd(ctx, 0) || !send_cmd(ctx, 127) ||
+      !send_cmd(ctx, 0x22) || !send_cmd(ctx, 0) || !send_cmd(ctx, 7)) {
+    return;
+  }
   uint8_t buf[17];
   buf[0] = OLED_CTRL_DATA;
   for (uint8_t page = 0; page < OLED_PAGES; page++) {
     for (uint8_t seg = 0; seg < OLED_WIDTH; seg += 16) {
       memcpy(&buf[1], &ctx->buffer[page * OLED_WIDTH + seg], 16);
-      ctx->hw->i2c_write(ctx->i2c_addr, buf, 17);
+      if (!g_registered_hw->i2c_write(ctx->i2c_addr, buf, 17)) {
+        return;
+      }
     }
   }
 }

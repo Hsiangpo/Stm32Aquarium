@@ -1,5 +1,13 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { describe, beforeAll, beforeEach, afterEach, afterAll, it, expect } from '@ohos/hypium';
+import {
+  describe,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  it,
+  expect
+} from '../../../../../oh_modules/.ohpm/@ohos+hypium@1.0.24/oh_modules/@ohos/hypium';
 
 export default function abilityTest() {
   describe('ActsAbilityTest', () => {

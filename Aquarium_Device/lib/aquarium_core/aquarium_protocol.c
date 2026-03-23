@@ -15,6 +15,45 @@ static bool aqua_is_finitef(float v) { return (v == v) && ((v - v) == 0.0f); }
 
 static float aqua_safe_float(float v) { return aqua_is_finitef(v) ? v : 0.0f; }
 
+static bool aqua_append_text(char *buffer, size_t buf_size, size_t *pos,
+                             const char *text) {
+  if (!buffer || !pos || !text) {
+    return false;
+  }
+
+  size_t len = strlen(text);
+  if (*pos + len >= buf_size) {
+    return false;
+  }
+
+  memcpy(buffer + *pos, text, len);
+  *pos += len;
+  buffer[*pos] = '\0';
+  return true;
+}
+
+static void aqua_format_fixed2(float value, char *buffer, size_t buffer_size) {
+  if (!buffer || buffer_size == 0) {
+    return;
+  }
+
+  float safe = aqua_safe_float(value);
+  bool negative = safe < 0.0f;
+  if (negative) {
+    safe = -safe;
+  }
+
+  int32_t scaled = (int32_t)(safe * 100.0f + 0.5f);
+  int32_t whole = scaled / 100;
+  int32_t frac = scaled % 100;
+
+  if (negative) {
+    snprintf(buffer, buffer_size, "-%ld.%02ld", (long)whole, (long)frac);
+  } else {
+    snprintf(buffer, buffer_size, "%ld.%02ld", (long)whole, (long)frac);
+  }
+}
+
 /* 简易 JSON 解析辅助函数声明 */
 static const char *find_json_key(const char *json, const char *key);
 static int parse_json_string(const char *start, char *out, size_t out_size);
@@ -35,38 +74,99 @@ AquaError aqua_build_properties_json(const AquariumProperties *props,
     return AQUA_ERR_NULL_PTR;
   }
 
-  int len = snprintf(
-      buffer, buf_size,
-      "{\"services\":[{"
-      "\"service_id\":\"" SERVICE_ID_AQUARIUM "\","
-      "\"properties\":{"
-      "\"temperature\":%.2f,"
-      "\"ph\":%.2f,"
-      "\"tds\":%.2f,"
-      "\"turbidity\":%.2f,"
-      "\"water_level\":%.2f,"
-      "\"heater\":%s,"
-      "\"pump_in\":%s,"
-      "\"pump_out\":%s,"
-      "\"auto_mode\":%s,"
-      "\"feed_countdown\":%d,"
-      "\"feeding_in_progress\":%s,"
-      "\"alarm_level\":%d,"
-      "\"alarm_muted\":%s"
-      "}}]}",
-      aqua_safe_float(props->temperature), aqua_safe_float(props->ph),
-      aqua_safe_float(props->tds), aqua_safe_float(props->turbidity),
-      aqua_safe_float(props->water_level), props->heater ? "true" : "false",
-      props->pump_in ? "true" : "false", props->pump_out ? "true" : "false",
-      props->auto_mode ? "true" : "false", (int)props->feed_countdown,
-      props->feeding_in_progress ? "true" : "false", (int)props->alarm_level,
-      props->alarm_muted ? "true" : "false");
+  char temp_str[24];
+  char ph_str[24];
+  char tds_str[24];
+  char turb_str[24];
+  char level_str[24];
+  aqua_format_fixed2(props->temperature, temp_str, sizeof(temp_str));
+  aqua_format_fixed2(props->ph, ph_str, sizeof(ph_str));
+  aqua_format_fixed2(props->tds, tds_str, sizeof(tds_str));
+  aqua_format_fixed2(props->turbidity, turb_str, sizeof(turb_str));
+  aqua_format_fixed2(props->water_level, level_str, sizeof(level_str));
 
-  if (len < 0 || (size_t)len >= buf_size) {
+  char countdown_str[16];
+  char alarm_str[16];
+  snprintf(countdown_str, sizeof(countdown_str), "%d", (int)props->feed_countdown);
+  snprintf(alarm_str, sizeof(alarm_str), "%d", (int)props->alarm_level);
+
+  size_t pos = 0;
+  buffer[0] = '\0';
+  if (!aqua_append_text(buffer, buf_size, &pos, "{\"services\":[{") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        "\"service_id\":\"" SERVICE_ID_AQUARIUM "\",") ||
+      !aqua_append_text(buffer, buf_size, &pos, "\"properties\":{") ||
+      !aqua_append_text(buffer, buf_size, &pos, "\"temperature\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, temp_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"ph\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, ph_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"tds\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, tds_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"turbidity\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, turb_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"water_level\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, level_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"heater\":") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        props->heater ? "true" : "false") ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"pump_in\":") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        props->pump_in ? "true" : "false") ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"pump_out\":") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        props->pump_out ? "true" : "false") ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"auto_mode\":") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        props->auto_mode ? "true" : "false") ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"feed_countdown\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, countdown_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"feeding_in_progress\":") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        props->feeding_in_progress ? "true" : "false") ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"alarm_level\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, alarm_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"alarm_muted\":") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        props->alarm_muted ? "true" : "false") ||
+      !aqua_append_text(buffer, buf_size, &pos, "}}]}")) {
     return AQUA_ERR_BUFFER_TOO_SMALL;
   }
 
-  *out_len = (size_t)len;
+  *out_len = pos;
+  return AQUA_OK;
+}
+
+AquaError aqua_build_properties_json_compact(const AquariumProperties *props,
+                                             char *buffer, size_t buf_size,
+                                             size_t *out_len) {
+  if (!props || !buffer || !out_len) {
+    return AQUA_ERR_NULL_PTR;
+  }
+
+  char temp_str[24];
+  char level_str[24];
+  char alarm_str[16];
+  aqua_format_fixed2(props->temperature, temp_str, sizeof(temp_str));
+  aqua_format_fixed2(props->water_level, level_str, sizeof(level_str));
+  snprintf(alarm_str, sizeof(alarm_str), "%d", (int)props->alarm_level);
+
+  size_t pos = 0;
+  buffer[0] = '\0';
+  if (!aqua_append_text(buffer, buf_size, &pos, "{\"services\":[{") ||
+      !aqua_append_text(buffer, buf_size, &pos,
+                        "\"service_id\":\"" SERVICE_ID_AQUARIUM "\",") ||
+      !aqua_append_text(buffer, buf_size, &pos, "\"properties\":{") ||
+      !aqua_append_text(buffer, buf_size, &pos, "\"temperature\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, temp_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"water_level\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, level_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, ",\"alarm_level\":") ||
+      !aqua_append_text(buffer, buf_size, &pos, alarm_str) ||
+      !aqua_append_text(buffer, buf_size, &pos, "}}]}")) {
+    return AQUA_ERR_BUFFER_TOO_SMALL;
+  }
+
+  *out_len = pos;
   return AQUA_OK;
 }
 

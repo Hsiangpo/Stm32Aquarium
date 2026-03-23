@@ -33,11 +33,48 @@ static bool is_priority_urc(const char *line, size_t len) {
   if (len >= 9 && strncmp(line, "+MQTTPUB:", 9) == 0) {
     return true;
   }
+  if (len >= 13 && strncmp(line, "+CIPSNTPTIME:", 13) == 0) {
+    return true;
+  }
   if (strcmp(line, "SEND OK") == 0 || strcmp(line, "SEND FAIL") == 0) {
     return true;
   }
 
   return false;
+}
+
+static void remember_last_cmd(AtClient *client, const char *cmd) {
+  if (!client || !cmd) {
+    return;
+  }
+
+  size_t len = 0;
+  while (cmd[len] != '\0' && cmd[len] != '=' && len < AT_LAST_CMD_MAX_LEN) {
+    client->last_cmd[len] = cmd[len];
+    len++;
+  }
+  client->last_cmd[len] = '\0';
+}
+
+static void remember_last_result(AtClient *client, AtState state,
+                                 const char *line) {
+  if (!client) {
+    return;
+  }
+
+  client->last_terminal_state = state;
+
+  const char *src = line;
+  if (!src || src[0] == '\0') {
+    src = (state == AT_STATE_DONE_TIMEOUT) ? "TIMEOUT" : "";
+  }
+
+  size_t len = strlen(src);
+  if (len > AT_LAST_RESULT_MAX_LEN) {
+    len = AT_LAST_RESULT_MAX_LEN;
+  }
+  memcpy(client->last_result, src, len);
+  client->last_result[len] = '\0';
 }
 
 static void push_urc(AtClient *client, const char *line, size_t len) {
@@ -84,9 +121,15 @@ static void process_line(AtClient *client, const char *line, size_t len) {
         /* 正在等待 > 提示符，OK 只是中间响应，继续等待 */
         client->got_ok = true;
       } else {
+        remember_last_result(client, AT_STATE_DONE_OK,
+                             client->cmd_response.valid ? client->cmd_response.data
+                                                        : line);
         client->state = AT_STATE_DONE_OK;
       }
     } else if (is_final_error(line)) {
+      remember_last_result(client, AT_STATE_DONE_ERROR,
+                           client->cmd_response.valid ? client->cmd_response.data
+                                                      : line);
       client->state = AT_STATE_DONE_ERROR;
     } else if (len == 1 && line[0] == '>') {
       /* AT+CIPSEND / AT+MQTTPUBRAW 的数据输入提示 */
@@ -213,6 +256,7 @@ AtError aqua_at_begin(AtClient *client, const char *cmd, uint32_t timeout_ms) {
   memset(&client->cmd_response, 0, sizeof(AtLine));
   client->expect_prompt = false;
   client->got_ok = false;
+  remember_last_cmd(client, cmd);
 
   /* 发送命令 */
   size_t cmd_len = strlen(cmd);
@@ -241,6 +285,7 @@ AtError aqua_at_begin_with_prompt(AtClient *client, const char *cmd,
   memset(&client->cmd_response, 0, sizeof(AtLine));
   client->expect_prompt = true; /* 期待 > 提示符 */
   client->got_ok = false;
+  remember_last_cmd(client, cmd);
 
   /* 发送命令 */
   size_t cmd_len = strlen(cmd);
@@ -271,6 +316,7 @@ AtState aqua_at_step(AtClient *client) {
     uint32_t elapsed = now - client->cmd_start_ms;
 
     if (elapsed >= client->cmd_timeout_ms) {
+      remember_last_result(client, AT_STATE_DONE_TIMEOUT, NULL);
       client->state = AT_STATE_DONE_TIMEOUT;
     }
   }

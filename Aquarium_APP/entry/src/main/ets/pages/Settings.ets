@@ -72,12 +72,12 @@ struct Settings {
       };
 
       await saveAppSettings(settings);
-      await this.toast('Saved');
+      await this.toast('已保存');
       router.back();
     } catch (e) {
       this.noticeText = e?.message ?? String(e);
       this.noticeIsError = true;
-      await this.toast('Save failed');
+      await this.toast('保存失败');
     } finally {
       this.isSaving = false;
     }
@@ -154,18 +154,18 @@ struct Settings {
         Column() {
           GlassCard() {
             Row({ space: 12 }) {
-              AnimButton({ text: 'Back', primary: false, isEnabled: true })
+              AnimButton({ text: '返回', primary: false, isEnabled: true })
                 .width(72)
                 .onClick(() => this.back());
 
-              Text('Settings')
+              Text('设置')
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 .layoutWeight(1)
                 .textAlign(TextAlign.Center);
 
-              AnimButton({ text: this.isSaving ? '...' : 'Save', primary: true, isEnabled: !this.isSaving })
+              AnimButton({ text: this.isSaving ? '保存中' : '保存', primary: true, isEnabled: !this.isSaving })
                 .width(72)
                 .onClick(() => {
                   this.saveAndBack().catch(() => {
@@ -194,30 +194,30 @@ struct Settings {
           Column({ space: 16 }) {
             GlassCard() {
               Column({ space: 8 }) {
-                this.SectionTitle('Connection');
-                Text('Connection parameters are hardcoded in demo mode and cannot be edited in UI.')
+                this.SectionTitle('连接信息');
+                Text('演示模式下连接参数已写死，界面内不可编辑。')
                   .fontSize(12)
                   .fontColor('#666666')
                   .width('100%');
-                this.InfoRow('Base URL', IOTDA_DEFAULTS.baseUrl);
-                this.InfoRow('Project ID', IOTDA_DEFAULTS.projectId);
-                this.InfoRow('Device ID', IOTDA_DEFAULTS.deviceId);
+                this.InfoRow('服务地址', IOTDA_DEFAULTS.baseUrl);
+                this.InfoRow('项目 ID', IOTDA_DEFAULTS.projectId);
+                this.InfoRow('设备 ID', IOTDA_DEFAULTS.deviceId);
               }
             }
 
             GlassCard() {
               Column({ space: 8 }) {
-                this.SectionTitle('Behavior');
-                this.ToggleRow('Auto refresh (30s)', this.autoRefreshEnabled, (v) => (this.autoRefreshEnabled = v));
-                this.ToggleRow('Alarm notifications', this.alarmNotifyEnabled, (v) => (this.alarmNotifyEnabled = v));
-                this.ToggleRow('Distributed sync', this.distributedSyncEnabled, (v) => (this.distributedSyncEnabled = v));
+                this.SectionTitle('行为设置');
+                this.ToggleRow('自动刷新（30 秒）', this.autoRefreshEnabled, (v) => (this.autoRefreshEnabled = v));
+                this.ToggleRow('告警通知', this.alarmNotifyEnabled, (v) => (this.alarmNotifyEnabled = v));
+                this.ToggleRow('分布式同步', this.distributedSyncEnabled, (v) => (this.distributedSyncEnabled = v));
               }
             }
 
             GlassCard() {
               Column({ space: 8 }) {
-                this.SectionTitle('Help');
-                AnimButton({ text: 'About', primary: false })
+                this.SectionTitle('帮助');
+                AnimButton({ text: '关于', primary: false })
                   .onClick(() => this.openAbout());
               }
             }

@@ -59,6 +59,10 @@ typedef struct {
   /* 上报配置 */
   uint32_t report_interval; /* 上报间隔（秒） */
   uint32_t report_timer;    /* 上报倒计时 */
+  AquaError diag_last_report_topic_err;   /* 最近一次 topic 生成结果 */
+  AquaError diag_last_report_payload_err; /* 最近一次 payload 生成结果 */
+  size_t diag_last_report_topic_len;      /* 最近一次 topic 长度 */
+  size_t diag_last_report_payload_len;    /* 最近一次 payload 长度 */
 } AquariumApp;
 
 /* ============================================================================
@@ -161,6 +165,18 @@ AquaError aqua_app_on_mqtt_command(AquariumApp *app, const char *in_topic,
                                    bool *out_has_response, char *out_topic,
                                    size_t topic_size, char *out_payload,
                                    size_t payload_size);
+
+/**
+ * @brief 直接应用已解析的下行命令
+ *
+ * 用于消息下发（sys/messages/down）等“不需要设备响应 topic”的场景。
+ *
+ * @param app 应用上下文指针
+ * @param cmd 已解析的命令结构
+ * @return AquaError 错误码
+ */
+AquaError aqua_app_apply_parsed_command(AquariumApp *app,
+                                        const ParsedCommand *cmd);
 
 /* ============================================================================
  * 状态访问（供外部查询）

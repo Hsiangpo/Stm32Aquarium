@@ -25,6 +25,7 @@ extern "C" {
 #define MQTT_BROKER_MAX_LEN 128
 #define MQTT_TOPIC_MAX_LEN 256
 #define MQTT_PAYLOAD_MAX_LEN 512
+#define MQTT_DIAG_CMD_MAX_LEN 384
 
 /* ============================================================================
  * 
@@ -34,14 +35,20 @@ extern "C" {
 typedef enum {
  MQTT_STATE_IDLE = 0, /* */
  MQTT_STATE_AT_TEST, /* AT */
+ MQTT_STATE_AT_RESET, /* AT+RST */
+ MQTT_STATE_AT_RESET_WAIT, /* wait ready after reset */
  MQTT_STATE_ATE0, /* */
  MQTT_STATE_CWMODE, /* WiFi Station */
  MQTT_STATE_CWJAP, /* WiFi */
  MQTT_STATE_SNTPCFG, /* SNTP */
  MQTT_STATE_SNTPTIME, /* SNTP */
  MQTT_STATE_MQTTUSERCFG, /* MQTT */
+ MQTT_STATE_MQTTCLIENTID, /* MQTT client id */
+ MQTT_STATE_MQTTUSERNAME, /* MQTT username */
+ MQTT_STATE_MQTTPASSWORD, /* MQTT password */
  MQTT_STATE_MQTTCONN, /* MQTT Broker */
  MQTT_STATE_MQTTSUB, /* Topic */
+ MQTT_STATE_MQTTMSGSUB, /* Downlink messages topic */
  MQTT_STATE_ONLINE, /* */
  MQTT_STATE_PUBLISHING, /* */
  MQTT_STATE_PUB_DATA, /* */
@@ -95,7 +102,14 @@ typedef struct {
   char pub_topic[MQTT_TOPIC_MAX_LEN];
   char pub_payload[MQTT_PAYLOAD_MAX_LEN];
   size_t pub_payload_len;
- uint32_t pub_start_ms; /* */
+  uint32_t pub_start_ms; /* */
+  uint32_t pub_prompt_ms; /* 收到 > 提示符的时刻 */
+  uint32_t pub_final_ok_ms; /* 兼容仅返回普通 OK 的固件 */
+  bool pub_use_raw; /* true=MQTTPUBRAW, false=MQTTPUB */
+  bool pub_prompt_seen; /* 已看到 > 提示符 */
+  bool pub_final_ok_seen; /* 已看到 payload 后的普通 OK */
+  char diag_last_pub_cmd[MQTT_DIAG_CMD_MAX_LEN];
+  size_t diag_last_pub_cmd_len;
 
  /* */
   uint8_t retry_count;
@@ -111,6 +125,7 @@ typedef struct {
  /* */
  uint32_t error_time_ms; /* ERROR */
  uint32_t reconnect_delay_ms; /* */
+ uint32_t reset_wait_start_ms; /* AT+RST -> ready */
  bool wifi_changed; /* WiFi */
 } MqttClient;
 

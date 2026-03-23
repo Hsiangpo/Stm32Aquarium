@@ -42,7 +42,7 @@ struct About {
           Column({ space: 16 }) {
             GlassCard() {
               Column({ space: 8 }) {
-                Text('Aquarium Assistant')
+                Text('水族箱助手')
                   .fontSize(24)
                   .fontWeight(FontWeight.Bold)
                   .fontColor(UiConstants.COLOR_PRIMARY)
@@ -80,7 +80,7 @@ struct About {
                   .fontSize(14)
                   .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 
-                Text('4. 在“历史”页查看趋势图，并可一键导出 JSON 实验数据。')
+                Text('4. 在“历史”页查看趋势图，并可一键导出实验 JSON 数据。')
                   .fontSize(14)
                   .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
               }
@@ -107,7 +107,7 @@ struct About {
                   .fontWeight(FontWeight.Medium)
                   .fontColor(UiConstants.COLOR_TEXT_PRIMARY)
                 
-                Text(`MQTT Endpoint: ${IOTDA_DEFAULTS.deviceMqttHost}:${IOTDA_DEFAULTS.deviceMqttPort}`)
+                Text(`MQTT 接入点：${IOTDA_DEFAULTS.deviceMqttHost}:${IOTDA_DEFAULTS.deviceMqttPort}`)
                   .fontSize(13)
                   .fontColor(UiConstants.COLOR_TEXT_SECONDARY)
               }

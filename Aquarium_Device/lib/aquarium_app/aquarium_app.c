@@ -293,12 +293,21 @@ AquaError aqua_app_step(AquariumApp *app, uint32_t elapsed_seconds,
   /* 5. 检查上报周期 */
   if (elapsed_seconds >= app->report_timer) {
     /* 触发上报 */
-    size_t topic_len, payload_len;
-    AquaError err = aqua_iotda_build_report(
-        app->device_id, &app->state.props, out_topic, topic_size, out_payload,
-        payload_size, &topic_len, &payload_len);
-    if (err != AQUA_OK) {
-      return err;
+    size_t topic_len = 0, payload_len = 0;
+    AquaError topic_err =
+        aqua_build_report_topic(app->device_id, out_topic, topic_size, &topic_len);
+    app->diag_last_report_topic_err = topic_err;
+    app->diag_last_report_topic_len = topic_len;
+    if (topic_err != AQUA_OK) {
+      return topic_err;
+    }
+
+    AquaError payload_err = aqua_build_properties_json(
+        &app->state.props, out_payload, payload_size, &payload_len);
+    app->diag_last_report_payload_err = payload_err;
+    app->diag_last_report_payload_len = payload_len;
+    if (payload_err != AQUA_OK) {
+      return payload_err;
     }
 
     *out_has_publish = true;
@@ -353,6 +362,15 @@ AquaError aqua_app_on_mqtt_command(AquariumApp *app, const char *in_topic,
   }
 
   return AQUA_OK;
+}
+
+AquaError aqua_app_apply_parsed_command(AquariumApp *app,
+                                        const ParsedCommand *cmd) {
+  if (!app || !cmd) {
+    return AQUA_ERR_NULL_PTR;
+  }
+
+  return aqua_logic_apply_command(&app->state, cmd);
 }
 
 /* ============================================================================

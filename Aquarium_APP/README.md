@@ -15,7 +15,9 @@
 
 ## 快速开始
 
-1. 用 DevEco Studio 打开本工程目录：`Aquarium_APP/`
+1. 推荐从仓库根目录执行：
+   `powershell -ExecutionPolicy Bypass -File .\tools\build_aquarium_app.ps1`
+2. 如需在 DevEco Studio 中查看源码，再打开本工程目录：`Aquarium_APP/`
 2. 连接真机或启动模拟器，运行安装
 3. 项目已内置演示参数（`Base URL / Project ID / Device ID / AK / SK / Device Secret`）
 4. 回到首页点击“**刷新**”
@@ -125,6 +127,7 @@ App 可直连 IoTDA **Device Endpoint**（TCP MQTT `1883`，不是 App Endpoint�
 
 ## 常见问题
 
+- 若仓库位于 `E:` 盘等 `exFAT` 目录，直接在源目录构建可能出现 `oh_modules` / `hvigor` 异常。交付和复现时统一使用根目录脚本 `tools/build_aquarium_app.ps1`。
 - `HTTP 401 ...`：通常是 AK/SK、签名、`Base URL`（endpoint）或设备/项目 ID 填写错误。
 - `HTTP 404 ...`：多为 `project_id` / `device_id` 不存在或路径拼写错误。
 - `HTTP 408/5xx` 或 “命令超时”：设备离线、网络抖动、或设备正在重连（例如下发 WiFi 配置后短暂离线）。

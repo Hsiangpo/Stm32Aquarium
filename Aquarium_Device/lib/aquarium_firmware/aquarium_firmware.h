@@ -46,6 +46,19 @@ typedef struct {
   MqttClient *mqtt;      /* MQTT 客户端指针 */
   uint32_t last_step_ms; /* 上次 step 的时间戳 */
   uint32_t subsec_ms;    /* 毫秒累计，用于在 <1s 的 loop 中也能推进 elapsed_seconds */
+  MqttConnState last_mqtt_state; /* 上一轮 MQTT 状态，用于检测上线瞬间 */
+  uint32_t diag_last_publish_ms;  /* 最近一次触发业务上报的时间戳 */
+  uint32_t diag_publish_attempts; /* 触发业务上报的累计次数 */
+  uint32_t diag_last_elapsed_seconds; /* 最近一次推进业务逻辑的秒数 */
+  uint32_t diag_timer_before_step; /* 最近一次进入 app_step 前的 report_timer */
+  uint32_t diag_timer_after_step;  /* 最近一次完成 app_step 后的 report_timer */
+  int diag_last_app_err;           /* 最近一次 app_step 返回值 */
+  bool diag_last_has_publish;     /* 最近一次 app_step 是否要求上报 */
+  char diag_last_topic[MQTT_TOPIC_MAX_LEN];
+  char diag_last_payload[MQTT_PAYLOAD_MAX_LEN];
+  ActuatorDesired work_actuators; /* 复用缓冲，避免 step 中的大栈帧 */
+  char work_topic[MQTT_TOPIC_MAX_LEN];
+  char work_payload[MQTT_PAYLOAD_MAX_LEN];
 
   /* 执行器回调 */
   ActuatorCallback actuator_cb;

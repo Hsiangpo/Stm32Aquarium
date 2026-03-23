@@ -41,7 +41,20 @@ static void Error_Handler(void);
 
 /* AT 命令写回调：通过 ESP32 UART 发送 */
 static size_t at_write_cb(const uint8_t *data, size_t len) {
-  HAL_UART_Transmit(&huart2, (uint8_t *)data, (uint16_t)len, 100);
+  if (!data || len == 0 || huart2.Instance == NULL) {
+    return 0;
+  }
+
+  /* 与 RX 中断共用同一 UART 时，避免再走 HAL_UART_Transmit 状态机。 */
+  for (size_t i = 0; i < len; i++) {
+    while (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TXE) == RESET) {
+    }
+    huart2.Instance->DR = data[i];
+  }
+
+  while (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) == RESET) {
+  }
+
   return len;
 }
 
@@ -232,23 +245,6 @@ static void generate_ap_password(char *out, size_t out_size) {
   out[AP_PASSWORD_LEN] = '\0';
 }
 
-static void print_ap_credentials_serial(const char *ssid,
-                                        const char *password) {
-  if (!ssid || !password) {
-    return;
-  }
-  char msg[96];
-  int len = snprintf(msg, sizeof(msg), "[AP] SSID=%s PWD=%s\r\n", ssid,
-                     password);
-  if (len <= 0) {
-    return;
-  }
-  if (len > (int)sizeof(msg)) {
-    len = (int)sizeof(msg);
-  }
-  HAL_UART_Transmit(&huart2, (uint8_t *)msg, (uint16_t)len, 100);
-}
-
 static void show_ap_credentials_oled(const char *ssid, const char *password) {
   if (!ssid || !password) {
     return;
@@ -312,8 +308,16 @@ static void float1_to_str(float val, char *buf, int buf_size) {
 /* ========================================================================== */
 
 static bool oled_i2c_write(uint8_t addr, const uint8_t *data, uint16_t len) {
-  return HAL_I2C_Master_Transmit(&hi2c1, addr << 1, (uint8_t *)data, len,
-                                 100) == HAL_OK;
+  HAL_StatusTypeDef st =
+      HAL_I2C_Master_Transmit(&hi2c1, addr << 1, (uint8_t *)data, len, 10);
+  if (st == HAL_OK) {
+    return true;
+  }
+
+  /* OLED 刷屏失败时快速恢复 I2C 外设，避免长时间卡在单帧渲染里。 */
+  HAL_I2C_DeInit(&hi2c1);
+  MX_I2C1_Init();
+  return false;
 }
 
 static const OledHwOps g_oled_hw_ops = {.i2c_write = oled_i2c_write};
@@ -463,7 +467,6 @@ int main(void) {
   strncpy(g_ap_password, g_ap_password_fixed, sizeof(g_ap_password) - 1);
   g_ap_password[sizeof(g_ap_password) - 1] = '\0';
   aqua_mqtt_set_ap_credentials(&g_mqtt, g_ap_ssid, g_ap_password);
-  print_ap_credentials_serial(g_ap_ssid, g_ap_password);
 
   /* 配置 MQTT 连接参数 */
   MqttConfig mqtt_cfg = {0};
@@ -925,7 +928,7 @@ static void MX_USART2_UART_Init(void) {
   ESP32_UART_RCC_ENABLE();
 
   huart2.Instance = ESP32_UART_INSTANCE;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 57600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;

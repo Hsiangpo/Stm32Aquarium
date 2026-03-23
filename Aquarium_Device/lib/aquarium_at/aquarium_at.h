@@ -37,6 +37,14 @@ extern "C" {
 #define AT_URC_QUEUE_SIZE 8
 #endif
 
+#ifndef AT_LAST_CMD_MAX_LEN
+#define AT_LAST_CMD_MAX_LEN 48
+#endif
+
+#ifndef AT_LAST_RESULT_MAX_LEN
+#define AT_LAST_RESULT_MAX_LEN 96
+#endif
+
 /* ============================================================================
  * 错误码
  * ============================================================================
@@ -120,10 +128,13 @@ typedef struct {
 
   /* 命令状态 */
   AtState state;
+  AtState last_terminal_state;
   uint32_t cmd_start_ms;
   uint32_t cmd_timeout_ms;
   bool expect_prompt; /* 是否期待 > 提示符（用于 CIPSEND/MQTTPUBRAW） */
   bool got_ok;        /* 已收到 OK（等待 > 提示符时使用） */
+  char last_cmd[AT_LAST_CMD_MAX_LEN + 1];
+  char last_result[AT_LAST_RESULT_MAX_LEN + 1];
 
   /* 当前命令的响应行（第一行非空响应） */
   AtLine cmd_response;

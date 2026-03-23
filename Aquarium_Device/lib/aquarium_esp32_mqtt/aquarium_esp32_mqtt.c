@@ -17,14 +17,39 @@
 #define AT_TIMEOUT_SHORT 2000
 #define AT_TIMEOUT_WIFI 35000
 #define AT_TIMEOUT_MQTT 10000
+#define AT_RESET_READY_TIMEOUT_MS 3000
 #define PUB_DATA_TIMEOUT_MS 15000 /* +MQTTPUB:OK */
+#define PUB_PROMPT_GUARD_MS 5 /* 让 ESP32 从 > 切到收数态 */
+#define PUB_OK_COMPAT_GRACE_MS 1200 /* 普通 OK 后再给 +MQTTPUB 预留窗口 */
 #define AT_TIMEOUT_SNTP 5000 /* SNTP */
 #define SNTP_QUERY_MAX_RETRY 3
+/* 每轮主循环最多处理 4 条 URC，避免串口持续灌入时饿死 OLED/LED 刷新。 */
+#define MQTT_URC_PROCESS_BUDGET 4
 
 /* AP */
 #define AP_SSID_DEFAULT "Aquarium_Setup"
 #define AP_PASSWORD_DEFAULT "12345678"
 #define AP_SERVER_PORT 80
+
+static bool mqtt_is_disconnect_urc(const char *line) {
+  if (!line) {
+    return false;
+  }
+
+  return strstr(line, "CLOSED") != NULL ||
+         strstr(line, "DISCONNECT") != NULL ||
+         strstr(line, "+MQTTDISCONNECTED") != NULL ||
+         strstr(line, "+MQTTCONN:0,") != NULL ||
+         strstr(line, "WIFI DISCONNECT") != NULL ||
+         strstr(line, "+CWJAP:") != NULL;
+}
+
+static bool mqtt_is_ready_line(const char *line) {
+  if (!line) {
+    return false;
+  }
+  return strcmp(line, "ready") == 0;
+}
 
 /* */
 static const char *MONTH_NAMES[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -70,6 +95,42 @@ static void aqua_mqtt_begin_cwjap(MqttClient *mqtt, char *cmd_buf,
   snprintf(cmd_buf, cmd_buf_size, "AT+CWJAP=\"%s\",\"%s\"", esc_ssid,
            esc_password);
   aqua_at_begin(mqtt->at, cmd_buf, AT_TIMEOUT_WIFI);
+}
+
+static void aqua_mqtt_begin_usercfg_base(MqttClient *mqtt, char *cmd_buf,
+                                         size_t cmd_buf_size) {
+  (void)mqtt;
+  snprintf(cmd_buf, cmd_buf_size, "AT+MQTTUSERCFG=0,1,\"a\",\"a\",\"a\",0,0,\"\"");
+}
+
+static void aqua_mqtt_begin_client_id(MqttClient *mqtt, char *cmd_buf,
+                                      size_t cmd_buf_size) {
+  char client_id[128];
+  char esc_client_id[128 * 2 + 1];
+
+  aqua_iotda_build_client_id(mqtt->config.device_id, IOTDA_SIGN_TYPE_CHECK,
+                             mqtt->timestamp, client_id, sizeof(client_id));
+  at_escape_string(client_id, esc_client_id, sizeof(esc_client_id));
+  snprintf(cmd_buf, cmd_buf_size, "AT+MQTTCLIENTID=0,\"%s\"", esc_client_id);
+}
+
+static void aqua_mqtt_begin_username(MqttClient *mqtt, char *cmd_buf,
+                                     size_t cmd_buf_size) {
+  char esc_username[65 * 2 + 1];
+
+  at_escape_string(mqtt->config.device_id, esc_username, sizeof(esc_username));
+  snprintf(cmd_buf, cmd_buf_size, "AT+MQTTUSERNAME=0,\"%s\"", esc_username);
+}
+
+static void aqua_mqtt_begin_password(MqttClient *mqtt, char *cmd_buf,
+                                     size_t cmd_buf_size) {
+  char password[65];
+  char esc_password[65 * 2 + 1];
+
+  aqua_iotda_build_password(mqtt->config.device_secret, mqtt->timestamp,
+                            password);
+  at_escape_string(password, esc_password, sizeof(esc_password));
+  snprintf(cmd_buf, cmd_buf_size, "AT+MQTTPASSWORD=0,\"%s\"", esc_password);
 }
 
 static bool is_placeholder_wifi_ssid(const char *ssid) {
@@ -128,6 +189,81 @@ static void aqua_mqtt_requeue_urcs(AtClient *at, const AtLine *lines,
     at->urc_head = (at->urc_head + 1) % AT_URC_QUEUE_SIZE;
     at->urc_count++;
   }
+}
+
+/*
+ * 仅遍历“当前拍到”的 URC 数量，避免把刚回灌的非发布 URC 再次弹出，
+ * 同时彻底去掉 PUB_DATA 路径上的大块栈数组。
+ */
+static void aqua_mqtt_process_pub_data_urcs(MqttClient *mqtt) {
+  if (!mqtt || !mqtt->at || !aqua_at_has_urc(mqtt->at)) {
+    return;
+  }
+
+  size_t pending = mqtt->at->urc_count;
+  while (pending-- > 0) {
+    AtLine urc;
+    if (aqua_at_pop_line(mqtt->at, &urc) != AT_OK) {
+      break;
+    }
+
+    if (strstr(urc.data, "+MQTTPUB:OK") != NULL) {
+      aqua_at_reset(mqtt->at);
+      mqtt->state = MQTT_STATE_ONLINE;
+      break;
+    }
+
+    if (strstr(urc.data, "+MQTTPUB:FAIL") != NULL) {
+      aqua_at_reset(mqtt->at);
+      mqtt->state = MQTT_STATE_ERROR;
+      break;
+    }
+
+    aqua_mqtt_requeue_urcs(mqtt->at, &urc, 1);
+  }
+}
+
+static void aqua_mqtt_write_payload_chunked(MqttClient *mqtt) {
+  if (!mqtt || !mqtt->at || !mqtt->at->write_func) {
+    return;
+  }
+
+  size_t offset = 0;
+  while (offset < mqtt->pub_payload_len) {
+    size_t chunk_len = mqtt->pub_payload_len - offset;
+    if (chunk_len > 32) {
+      chunk_len = 32;
+    }
+
+    /* 分块发送，给 UART1 现场链路留出自然间隙，降低长帧突发丢字节概率。 */
+    mqtt->at->write_func((const uint8_t *)mqtt->pub_payload + offset, chunk_len);
+    offset += chunk_len;
+  }
+}
+
+static void aqua_mqtt_record_publish_cmd(MqttClient *mqtt, const char *cmd) {
+  if (!mqtt) {
+    return;
+  }
+
+  mqtt->diag_last_pub_cmd[0] = '\0';
+  mqtt->diag_last_pub_cmd_len = 0;
+  if (!cmd) {
+    return;
+  }
+
+  strncpy(mqtt->diag_last_pub_cmd, cmd, sizeof(mqtt->diag_last_pub_cmd) - 1);
+  mqtt->diag_last_pub_cmd[sizeof(mqtt->diag_last_pub_cmd) - 1] = '\0';
+  mqtt->diag_last_pub_cmd_len = strlen(mqtt->diag_last_pub_cmd);
+}
+
+static void aqua_format_size_dec(size_t value, char *buffer,
+                                 size_t buffer_size) {
+  if (!buffer || buffer_size == 0) {
+    return;
+  }
+
+  snprintf(buffer, buffer_size, "%lu", (unsigned long)value);
 }
 
 /* ============================================================================
@@ -212,12 +348,20 @@ bool aqua_mqtt_publish(MqttClient *mqtt, const char *topic, const char *payload,
   memcpy(mqtt->pub_payload, payload, len);
   mqtt->pub_payload[len] = '\0';
   mqtt->pub_payload_len = len;
+  mqtt->pub_use_raw = true;
+  mqtt->pub_prompt_seen = false;
+  mqtt->pub_prompt_ms = 0;
+  mqtt->pub_final_ok_seen = false;
+  mqtt->pub_final_ok_ms = 0;
 
  /* AT+MQTTPUBRAW */
  /* OK -> > begin_with_prompt */
+  char len_str[24];
   char cmd[MQTT_TOPIC_MAX_LEN + 64];
-  snprintf(cmd, sizeof(cmd), "AT+MQTTPUBRAW=0,\"%s\",%zu,0,0", mqtt->pub_topic,
-           mqtt->pub_payload_len);
+  aqua_format_size_dec(mqtt->pub_payload_len, len_str, sizeof(len_str));
+  snprintf(cmd, sizeof(cmd), "AT+MQTTPUBRAW=0,\"%s\",%s,1,0", mqtt->pub_topic,
+           len_str);
+  aqua_mqtt_record_publish_cmd(mqtt, cmd);
   aqua_at_begin_with_prompt(mqtt->at, cmd, AT_TIMEOUT_MQTT);
   mqtt->pub_start_ms = mqtt->at->now_ms_func();
   mqtt->state = MQTT_STATE_PUBLISHING;
@@ -257,16 +401,48 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_IDLE:
     break;
 
-  case MQTT_STATE_AT_TEST:
+ case MQTT_STATE_AT_TEST:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      aqua_at_begin(mqtt->at, "ATE0", AT_TIMEOUT_SHORT);
-      mqtt->state = MQTT_STATE_ATE0;
+      aqua_at_begin(mqtt->at, "AT+RST", AT_TIMEOUT_SHORT);
+      mqtt->state = MQTT_STATE_AT_RESET;
     } else if (at_state == AT_STATE_DONE_ERROR ||
                at_state == AT_STATE_DONE_TIMEOUT) {
       mqtt->state = MQTT_STATE_ERROR;
     }
     break;
+
+  case MQTT_STATE_AT_RESET:
+    if (at_state == AT_STATE_DONE_OK) {
+      aqua_at_reset(mqtt->at);
+      mqtt->reset_wait_start_ms = mqtt->at->now_ms_func();
+      mqtt->state = MQTT_STATE_AT_RESET_WAIT;
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
+      mqtt->state = MQTT_STATE_ERROR;
+    }
+    break;
+
+  case MQTT_STATE_AT_RESET_WAIT: {
+    bool ready_seen = false;
+    if (aqua_at_has_urc(mqtt->at)) {
+      AtLine urc;
+      size_t pending = mqtt->at->urc_count;
+      while (pending-- > 0 && aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
+        if (mqtt_is_ready_line(urc.data)) {
+          ready_seen = true;
+          break;
+        }
+      }
+    }
+
+    uint32_t now = mqtt->at->now_ms_func();
+    if (ready_seen || (now - mqtt->reset_wait_start_ms >= AT_RESET_READY_TIMEOUT_MS)) {
+      aqua_at_begin(mqtt->at, "ATE0", AT_TIMEOUT_SHORT);
+      mqtt->state = MQTT_STATE_ATE0;
+    }
+    break;
+  }
 
   case MQTT_STATE_ATE0:
     if (at_state == AT_STATE_DONE_OK) {
@@ -377,15 +553,7 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
         break;
       }
  /* */
-      char client_id[128];
-      char password[65];
-      aqua_iotda_build_client_id(mqtt->config.device_id, IOTDA_SIGN_TYPE_CHECK,
-                                 mqtt->timestamp, client_id, sizeof(client_id));
-      aqua_iotda_build_password(mqtt->config.device_secret, mqtt->timestamp,
-                                password);
-      snprintf(cmd, sizeof(cmd),
-               "AT+MQTTUSERCFG=0,1,\"%s\",\"%s\",\"%s\",0,0,\"\"", client_id,
-               mqtt->config.device_id, password);
+      aqua_mqtt_begin_usercfg_base(mqtt, cmd, sizeof(cmd));
       aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
       mqtt->state = MQTT_STATE_MQTTUSERCFG;
     } else if (at_state == AT_STATE_DONE_ERROR ||
@@ -395,6 +563,42 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
     break;
 
   case MQTT_STATE_MQTTUSERCFG:
+    if (at_state == AT_STATE_DONE_OK) {
+      aqua_at_reset(mqtt->at);
+      aqua_mqtt_begin_client_id(mqtt, cmd, sizeof(cmd));
+      aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
+      mqtt->state = MQTT_STATE_MQTTCLIENTID;
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
+      mqtt->state = MQTT_STATE_ERROR;
+    }
+    break;
+
+  case MQTT_STATE_MQTTCLIENTID:
+    if (at_state == AT_STATE_DONE_OK) {
+      aqua_at_reset(mqtt->at);
+      aqua_mqtt_begin_username(mqtt, cmd, sizeof(cmd));
+      aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
+      mqtt->state = MQTT_STATE_MQTTUSERNAME;
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
+      mqtt->state = MQTT_STATE_ERROR;
+    }
+    break;
+
+  case MQTT_STATE_MQTTUSERNAME:
+    if (at_state == AT_STATE_DONE_OK) {
+      aqua_at_reset(mqtt->at);
+      aqua_mqtt_begin_password(mqtt, cmd, sizeof(cmd));
+      aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_SHORT);
+      mqtt->state = MQTT_STATE_MQTTPASSWORD;
+    } else if (at_state == AT_STATE_DONE_ERROR ||
+               at_state == AT_STATE_DONE_TIMEOUT) {
+      mqtt->state = MQTT_STATE_ERROR;
+    }
+    break;
+
+  case MQTT_STATE_MQTTPASSWORD:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
       snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%u,1",
@@ -424,16 +628,35 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
   case MQTT_STATE_MQTTSUB:
     if (at_state == AT_STATE_DONE_OK) {
       aqua_at_reset(mqtt->at);
-      mqtt->state = MQTT_STATE_ONLINE;
+      snprintf(cmd, sizeof(cmd),
+               "AT+MQTTSUB=0,\"$oc/devices/%s/sys/messages/down\",1",
+               mqtt->config.device_id);
+      aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_MQTT);
+      mqtt->state = MQTT_STATE_MQTTMSGSUB;
     } else if (at_state == AT_STATE_DONE_TIMEOUT) {
       /*
-       * Some ESP-AT releases occasionally miss the trailing OK for MQTTSUB
-       * while subscription is already effective. Do not force reconnect storm.
+       * 现场和云端跟踪表明，部分 ESP-AT 固件在订阅已生效时仍可能丢失尾部 OK。
+       * 这里保留兼容路径，继续尝试补订阅 messages/down。
        */
+      aqua_at_reset(mqtt->at);
+      snprintf(cmd, sizeof(cmd),
+               "AT+MQTTSUB=0,\"$oc/devices/%s/sys/messages/down\",1",
+               mqtt->config.device_id);
+      aqua_at_begin(mqtt->at, cmd, AT_TIMEOUT_MQTT);
+      mqtt->state = MQTT_STATE_MQTTMSGSUB;
+    } else if (at_state == AT_STATE_DONE_ERROR) {
+      mqtt->state = MQTT_STATE_ERROR;
+      mqtt->error_time_ms = mqtt->at->now_ms_func();
+    }
+    break;
+
+  case MQTT_STATE_MQTTMSGSUB:
+    if (at_state == AT_STATE_DONE_OK || at_state == AT_STATE_DONE_TIMEOUT) {
       aqua_at_reset(mqtt->at);
       mqtt->state = MQTT_STATE_ONLINE;
     } else if (at_state == AT_STATE_DONE_ERROR) {
       mqtt->state = MQTT_STATE_ERROR;
+      mqtt->error_time_ms = mqtt->at->now_ms_func();
     }
     break;
 
@@ -445,9 +668,18 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
  * 3. +MQTTPUB:OK +MQTTPUB:FAIL
      */
     if (at_state == AT_STATE_GOT_PROMPT) {
- /* > payload \r\n */
-      mqtt->at->write_func((const uint8_t *)mqtt->pub_payload,
-                           mqtt->pub_payload_len);
+      uint32_t now = mqtt->at->now_ms_func();
+      if (!mqtt->pub_prompt_seen) {
+        mqtt->pub_prompt_seen = true;
+        mqtt->pub_prompt_ms = now;
+        break;
+      }
+      if (now - mqtt->pub_prompt_ms < PUB_PROMPT_GUARD_MS) {
+        break;
+      }
+
+      /* > 后给出极短保护窗口，再发送 payload，避免 UART1 现场链路首字节丢失。 */
+      aqua_mqtt_write_payload_chunked(mqtt);
       mqtt->state = MQTT_STATE_PUB_DATA;
       /*
        * Some ESP-AT builds report publish completion via plain final OK
@@ -464,61 +696,45 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
     /*
  * URC +MQTTPUB:OK +MQTTPUB:FAIL
      */
-    AtLine deferred_urcs[AT_URC_QUEUE_SIZE];
-    size_t deferred_count = 0;
-    if (aqua_at_has_urc(mqtt->at)) {
-      AtLine urc;
-      while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
-        if (strstr(urc.data, "+MQTTPUB:OK") != NULL) {
-          aqua_at_reset(mqtt->at);
-          mqtt->state = MQTT_STATE_ONLINE;
-          break;
-        } else if (strstr(urc.data, "+MQTTPUB:FAIL") != NULL) {
-          aqua_at_reset(mqtt->at);
-          mqtt->state = MQTT_STATE_ERROR;
-          break;
-        } else if (deferred_count < AT_URC_QUEUE_SIZE) {
-          deferred_urcs[deferred_count++] = urc;
-        }
-      }
-
-      if (deferred_count > 0) {
-        aqua_mqtt_requeue_urcs(mqtt->at, deferred_urcs, deferred_count);
-      }
-    }
+    aqua_mqtt_process_pub_data_urcs(mqtt);
 
     if (mqtt->state == MQTT_STATE_PUB_DATA) {
+      uint32_t now = mqtt->at->now_ms_func();
+
       /*
-       * Compatibility path: some firmware only gives final OK after payload,
-       * no +MQTTPUB URC. Treat DONE_OK as publish success.
+       * 官方文档定义的成功标志是 +MQTTPUB:OK。
+       * 这里把 payload 后的普通 OK 视为“待确认”而非立即成功，
+       * 先给 +MQTTPUB:OK / FAIL 留出一小段窗口，避免把假成功吞掉。
        */
       if (at_state == AT_STATE_DONE_OK) {
         aqua_at_reset(mqtt->at);
-        mqtt->state = MQTT_STATE_ONLINE;
-        break;
+        mqtt->pub_final_ok_seen = true;
+        mqtt->pub_final_ok_ms = now;
       }
-      if (at_state == AT_STATE_DONE_ERROR) {
+      if (mqtt->state == MQTT_STATE_PUB_DATA &&
+          at_state == AT_STATE_DONE_ERROR) {
         aqua_at_reset(mqtt->at);
         mqtt->state = MQTT_STATE_ERROR;
         break;
       }
-      if (at_state == AT_STATE_DONE_TIMEOUT) {
-        /*
-         * Some ESP-AT variants do not emit explicit publish completion lines.
-         * Keep connection online on timeout to avoid reconnect storms.
-         */
+      if (mqtt->state == MQTT_STATE_PUB_DATA &&
+          at_state == AT_STATE_DONE_TIMEOUT) {
         aqua_at_reset(mqtt->at);
+        mqtt->state = MQTT_STATE_ERROR;
+        mqtt->error_time_ms = now;
+        break;
+      }
+
+      if (mqtt->pub_final_ok_seen &&
+          (now - mqtt->pub_final_ok_ms >= PUB_OK_COMPAT_GRACE_MS)) {
         mqtt->state = MQTT_STATE_ONLINE;
         break;
       }
-    }
 
- /* */
-    if (mqtt->state == MQTT_STATE_PUB_DATA) {
-      uint32_t now = mqtt->at->now_ms_func();
       if (now - mqtt->pub_start_ms >= PUB_DATA_TIMEOUT_MS) {
         aqua_at_reset(mqtt->at);
-        mqtt->state = MQTT_STATE_ONLINE;
+        mqtt->state = MQTT_STATE_ERROR;
+        mqtt->error_time_ms = now;
       }
     }
     break;
@@ -668,6 +884,20 @@ MqttConnState aqua_mqtt_step(MqttClient *mqtt) {
     break;
 
   case MQTT_STATE_ONLINE:
+    if (aqua_at_has_urc(mqtt->at)) {
+      AtLine urc;
+      while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
+        if (mqtt_is_disconnect_urc(urc.data)) {
+          mqtt->state = MQTT_STATE_ERROR;
+          mqtt->error_time_ms = mqtt->at->now_ms_func();
+          break;
+        }
+      }
+
+      if (mqtt->state == MQTT_STATE_ERROR) {
+        break;
+      }
+    }
  /* WiFi */
     if (mqtt->wifi_changed) {
       mqtt->wifi_changed = false;
@@ -788,8 +1018,17 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
 
   bool handled = false;
   AtLine urc;
+  uint8_t processed = 0;
 
-  while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
+  while (processed < MQTT_URC_PROCESS_BUDGET &&
+         aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
+    processed++;
+    if (mqtt_is_disconnect_urc(urc.data)) {
+      mqtt->state = MQTT_STATE_ERROR;
+      mqtt->error_time_ms = mqtt->at->now_ms_func();
+      handled = true;
+      break;
+    }
  /* +MQTTSUBRECV */
     if (strstr(urc.data, "+MQTTSUBRECV:") == NULL)
       continue;
@@ -802,10 +1041,17 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
       continue;
     }
 
+    bool is_command_topic = strstr(topic, "/sys/commands/") != NULL;
+    bool is_message_topic = strstr(topic, "/sys/messages/down") != NULL;
+    if (!is_command_topic && !is_message_topic) {
+      continue;
+    }
+
  /* WiFi */
     ParsedCommand cmd;
+    AquaError parse_err = aqua_parse_command_json(payload, strlen(payload), &cmd);
     bool wifi_change_needed = false;
-    if (aqua_parse_command_json(payload, strlen(payload), &cmd) == AQUA_OK) {
+    if (parse_err == AQUA_OK) {
       if (cmd.type == COMMAND_TYPE_SET_CONFIG &&
           cmd.params.config.has_wifi_ssid &&
           cmd.params.config.has_wifi_password &&
@@ -816,6 +1062,25 @@ bool aqua_mqtt_poll_commands(MqttClient *mqtt) {
           wifi_change_needed = true;
         }
       }
+    }
+
+    if (is_message_topic) {
+      if (parse_err == AQUA_OK &&
+          aqua_app_apply_parsed_command(mqtt->app, &cmd) == AQUA_OK) {
+        if (wifi_change_needed) {
+          strncpy(mqtt->config.wifi_ssid, mqtt->app->state.config.wifi_ssid,
+                  sizeof(mqtt->config.wifi_ssid) - 1);
+          mqtt->config.wifi_ssid[sizeof(mqtt->config.wifi_ssid) - 1] = '\0';
+          strncpy(mqtt->config.wifi_password,
+                  mqtt->app->state.config.wifi_password,
+                  sizeof(mqtt->config.wifi_password) - 1);
+          mqtt->config.wifi_password[sizeof(mqtt->config.wifi_password) - 1] =
+              '\0';
+          aqua_mqtt_notify_wifi_changed(mqtt);
+        }
+      }
+      handled = true;
+      break;
     }
 
  /* app */
@@ -898,7 +1163,10 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
     return false;
 
   AtLine urc;
-  while (aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
+  uint8_t processed = 0;
+  while (processed < MQTT_URC_PROCESS_BUDGET &&
+         aqua_at_pop_line(mqtt->at, &urc) == AT_OK) {
+    processed++;
     /*
  * +IPD 
  * - (CIPDINFO=0): +IPD,<link_id>,<len>:<data>
@@ -943,11 +1211,13 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
     mqtt->ap_req_type = req_type;
 
     char cmd[128];
+    char send_len_str[24];
     if (req_type == 1) {
  /* */
       mqtt->ap_send_html = AP_CONFIG_HTML;
-      snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d,%zu", link_id,
-               strlen(AP_CONFIG_HTML));
+      aqua_format_size_dec(strlen(AP_CONFIG_HTML), send_len_str,
+                           sizeof(send_len_str));
+      snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d,%s", link_id, send_len_str);
     } else if (req_type == 2) {
  /* */
       strncpy(mqtt->config.wifi_ssid, ssid, sizeof(mqtt->config.wifi_ssid) - 1);
@@ -957,7 +1227,7 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
       mqtt->config.wifi_password[sizeof(mqtt->config.wifi_password) - 1] =
           '\0';
 
- /* app */
+/* app */
       if (mqtt->app) {
         strncpy(mqtt->app->state.config.wifi_ssid, ssid,
                 sizeof(mqtt->app->state.config.wifi_ssid) - 1);
@@ -971,8 +1241,9 @@ bool aqua_mqtt_poll_ap_config(MqttClient *mqtt) {
       }
 
       mqtt->ap_send_html = AP_SUCCESS_HTML;
-      snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d,%zu", link_id,
-               strlen(AP_SUCCESS_HTML));
+      aqua_format_size_dec(strlen(AP_SUCCESS_HTML), send_len_str,
+                           sizeof(send_len_str));
+      snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d,%s", link_id, send_len_str);
     }
 
  /* AT+CIPSEND OK -> > begin_with_prompt */

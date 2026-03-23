@@ -11,21 +11,26 @@
 static uint8_t g_i2c_buf[2048];
 static uint16_t g_i2c_len;
 static uint16_t g_i2c_call_count;
+static int g_i2c_fail_after = -1;
 
 void setUp(void) {
   memset(g_i2c_buf, 0, sizeof(g_i2c_buf));
   g_i2c_len = 0;
   g_i2c_call_count = 0;
+  g_i2c_fail_after = -1;
 }
 void tearDown(void) {}
 
 static bool mock_i2c_write(uint8_t addr, const uint8_t *data, uint16_t len) {
   (void)addr;
+  g_i2c_call_count++;
+  if (g_i2c_fail_after >= 0 && g_i2c_call_count > g_i2c_fail_after) {
+    return false;
+  }
   if (g_i2c_len + len < sizeof(g_i2c_buf)) {
     memcpy(&g_i2c_buf[g_i2c_len], data, len);
     g_i2c_len += len;
   }
-  g_i2c_call_count++;
   return true;
 }
 
@@ -80,6 +85,31 @@ void test_render_sends_pages(void) {
   TEST_ASSERT_GREATER_THAN(50, g_i2c_call_count);
 }
 
+void test_render_uses_registered_hw_when_context_pointer_is_corrupted(void) {
+  OledContext ctx;
+  oled_init(&ctx, &g_mock_hw, OLED_I2C_ADDR_DEFAULT);
+  ctx.hw = NULL;
+
+  g_i2c_call_count = 0;
+  g_i2c_len = 0;
+  oled_render(&ctx);
+
+  TEST_ASSERT_GREATER_THAN(50, g_i2c_call_count);
+}
+
+void test_render_stops_after_first_i2c_failure(void) {
+  OledContext ctx;
+  oled_init(&ctx, &g_mock_hw, OLED_I2C_ADDR_DEFAULT);
+
+  g_i2c_call_count = 0;
+  g_i2c_len = 0;
+  g_i2c_fail_after = 1;
+
+  oled_render(&ctx);
+
+  TEST_ASSERT_EQUAL(2, g_i2c_call_count);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_init_sends_commands);
@@ -88,5 +118,7 @@ int main(void) {
   RUN_TEST(test_set_pixel_out_of_bounds);
   RUN_TEST(test_draw_string_no_overflow);
   RUN_TEST(test_render_sends_pages);
+  RUN_TEST(test_render_uses_registered_hw_when_context_pointer_is_corrupted);
+  RUN_TEST(test_render_stops_after_first_i2c_failure);
   return UNITY_END();
 }
